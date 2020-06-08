@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<mdscript name="x4_focused_pan" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="md.xsd">
+
+	<cues>
+
+		<!-- Tell the lua side that the game loaded. -->
+		<cue name="Reload_Listener" instantiate="true" namespace="this">
+			<conditions>
+				<check_any>
+					<event_game_loaded/>
+					<event_game_started/>
+					<event_ui_triggered screen="'Lua_Loader'" control="'Ready'"/>
+				</check_any>
+			</conditions>
+			<actions>
+				<raise_lua_event name="'Lua_Loader.Load'" param="'extensions.x4_focused_pan.x4_focused_pan'"/>
+			</actions>
+		</cue>
+
+	</cues>
+
+</mdscript>
