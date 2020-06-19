@@ -762,14 +762,14 @@ function mod.onRenderTargetMiddleMouseDown()
 	menu.focusedpan.cs_x = {cos_yaw, 0., -sin_yaw}
 	menu.focusedpan.cs_y = {-sin_yaw*sin_pitch, cos_pitch, -cos_yaw*sin_pitch}
 
---	local obj = C.GetPickedMapComponent(menu.holomap)
---	menu.focusedpan.rtmouseposi = table.pack(GetRenderTargetMousePosition(menu.map))
---	AddLogbookEntry('tips', 'Object:UID=' .. ConvertStringTo64Bit(tostring(obj)) .. ',name='
---			.. ffi.string(C.GetComponentName(obj)) .. ',class=' .. ffi.string(C.GetComponentClass(obj))
---			.. ';\nmouse:' .. (menu.focusedpan.mouseposi[1]) .. ',' .. (menu.focusedpan.mouseposi[2])
---			.. ';\nrtmouse:' .. (menu.focusedpan.rtmouseposi[1]) .. ',' .. (menu.focusedpan.rtmouseposi[2])
---			.. ';\nUIPosRot:' .. table.concat({ off.x, off.y, off.z, off.yaw, off.pitch, off.roll }, ',')
---			.. ';\ncameraDist:' .. menu.focusedpan.mapstate.cameradistance)
+	--local obj = C.GetPickedMapComponent(menu.holomap)
+	--menu.focusedpan.rtmouseposi = table.pack(GetRenderTargetMousePosition(menu.map))
+	--AddLogbookEntry('tips', 'Object:UID=' .. ConvertStringTo64Bit(tostring(obj)) .. ',name='
+	--		.. ffi.string(C.GetComponentName(obj)) .. ',class=' .. ffi.string(C.GetComponentClass(obj))
+	--		.. ';\nmouse:' .. (menu.focusedpan.mouseposi[1]) .. ',' .. (menu.focusedpan.mouseposi[2])
+	--		.. ';\nrtmouse:' .. (menu.focusedpan.rtmouseposi[1]) .. ',' .. (menu.focusedpan.rtmouseposi[2])
+	--		.. ';\nUIPosRot:' .. table.concat({ off.x, off.y, off.z, off.yaw, off.pitch, off.roll }, ',')
+	--		.. ';\ncameraDist:' .. menu.focusedpan.mapstate.cameradistance)
 end
 
 function mod.onRenderTargetMiddleMouseUp()
@@ -791,6 +791,9 @@ local orderDragSupport = {
 		["ExploreUpdate"]			= 2,
 }
 function mod.onRenderTargetMouseDown(modified)
+	if menu.currentMouseCursor == 'trade' or menu.infoTableMode == "plots" then
+		return orig.onRenderTargetMouseDown(modified)
+	end
 	menu.leftdown = { time = getElapsedTime(), dyntime = getElapsedTime(), position = table.pack(GetLocalMousePosition()), dynpos = table.pack(GetLocalMousePosition()) }
 
 	local pickedorder = ffi.new("Order")
@@ -886,15 +889,15 @@ function mod.prepareInfoContext(rowdata, instance)
 			local npcname = GetComponentData(person, "name")
 			row[1]:createText(npcname, Helper.headerRowCenteredProperties)
 			-- set guidance
-			local row = loctable:addRow("info_person_setguidance", { fixed = true, bgColor = Helper.color.transparent })
+			local row = loctable:addRow("info_person_setguidance", { fixed = true, bgColor = Helper.color.darkgrey })
 			row[1]:createButton({ bgColor = Helper.color.transparent, height = Helper.standardTextHeight }):setText(string.format(ReadText(1016, 10101), npcname))
 			row[1].handlers.onClick = function () menu.plotCourse(ConvertIDTo64Bit(person)); Helper.closeMenu(menu); menu.cleanup() end
 			-- work somewhere else
-			local row = loctable:addRow("info_person_worksomewhere", { fixed = true, bgColor = Helper.color.transparent })
+			local row = loctable:addRow("info_person_worksomewhere", { fixed = true, bgColor = Helper.color.darkgrey })
 			row[1]:createButton({ bgColor = Helper.color.transparent, height = Helper.standardTextHeight }):setText(ReadText(1002, 3008))
 			row[1].handlers.onClick = function () Helper.closeMenuAndOpenNewMenu(menu, "MapMenu", { 0, 0, true, controllable, nil, "hire", { "signal", person, 0} }); menu.cleanup() end
 			-- fire
-			local row = loctable:addRow("info_person_fire", { fixed = true, bgColor = Helper.color.transparent })
+			local row = loctable:addRow("info_person_fire", { fixed = true, bgColor = Helper.color.darkgrey })
 			row[1]:createButton({ bgColor = Helper.color.transparent, height = Helper.standardTextHeight }):setText(ReadText(1002, 15800))
 			row[1].handlers.onClick = function () menu.infoSubmenuFireNPCConfirm(controllable, person, person, instance) end
 			-- adjust frame position
@@ -954,6 +957,18 @@ function mod.infoSubmenuFireNPC(controllable, entity, person, instance)
 			menu.refreshInfoFrame2(nil, 0)
 		end
 	end
+end
+
+function mod.onTableRightMouseClick(uitable, row, posx, posy)
+	if menu.infoTableMode == "info" and row == 2 then
+		local components = {}
+		Helper.ffiVLA(components, "UniverseID", C.GetNumMapSelectedComponents, C.GetMapSelectedComponents, menu.holomap)
+		if #components > 0 then
+			C.SetFocusMapComponent(menu.holomap, components[1], false)
+		end
+	end
+
+	return orig.onTableRightMouseClick(uitable, row, posx, posy)
 end
 
 init()
