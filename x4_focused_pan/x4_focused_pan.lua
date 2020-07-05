@@ -675,6 +675,37 @@ ffi.cdef [[
 	void UpdateMapBuildPlot(UniverseID holomapid);
 ]]
 
+local function tprint(tbl, indent, endl)
+	local endl = endl or '\n'
+	if not indent then
+		indent = 0
+	end
+	local toprint = string.rep(" ", indent) .. "{" .. endl
+	indent = indent + 2
+	if type(tbl) ~= 'table' then
+		return 'Not a table: value=' .. tostring(tbl)
+	end
+	for k, v in pairs(tbl) do
+		toprint = toprint .. string.rep(" ", indent)
+		if (type(k) == "number") then
+			toprint = toprint .. "[" .. k .. "] = "
+		elseif (type(k) == "string") then
+			toprint = toprint .. k .. "= "
+		end
+		if (type(v) == "number") then
+			toprint = toprint .. v .. "," .. endl
+		elseif (type(v) == "string") then
+			toprint = toprint .. "\"" .. v .. "\"," .. endl
+		elseif (type(v) == "table") then
+			toprint = toprint .. tprint(v, indent + 2) .. "," .. endl
+		else
+			toprint = toprint .. "\"" .. tostring(v) .. "\"," .. endl
+		end
+	end
+	toprint = toprint .. string.rep(" ", indent - 2) .. "}"
+	return toprint
+end
+
 local orig = {}
 local mod = {}
 local menu = {}
@@ -695,6 +726,66 @@ local function init()
 	end
 end
 
+local config = {
+	mapRowHeight = Helper.standardTextHeight,
+	mapFontSize = Helper.standardFontSize,
+	contextBorder = 5,
+	layers = {
+		{ name = ReadText(1001, 3252),	icon = "mapst_fs_trade",		mode = "layer_trade",		helpOverlayID = "layer_trade",		helpOverlayText = ReadText(1028, 3214)  },
+		{ name = ReadText(1001, 3253),	icon = "mapst_fs_think",		mode = "layer_think",		helpOverlayID = "layer_think",		helpOverlayText = ReadText(1028, 3215)  },
+		{ name = ReadText(1001, 8329),	icon = "mapst_fs_mining",		mode = "layer_mining",		helpOverlayID = "layer_mining",		helpOverlayText = ReadText(1028, 3216)  },
+		{ name = ReadText(1001, 3254),	icon = "mapst_fs_other",		mode = "layer_other",		helpOverlayID = "layer_other",		helpOverlayText = ReadText(1028, 3217)  },
+	},
+	orderDragSupport = {
+	--	order name					position parameter
+		["MoveWait"]				= 1,
+		["CollectDropsInRadius"]	= 1,
+		["DeployObjectAtPosition"]	= 1,
+		["AttackInRange"]			= 1,
+		["ProtectPosition"]			= 1,
+		["MiningCollect"]			= 1,
+		["MiningPlayer"]			= 1,
+		["Explore"]					= 2,
+		["ExploreUpdate"]			= 2,
+	},
+	layer_trade = {
+		callback = function (value) return C.SetMapRenderTradeOffers(menu.holomap, value) end,
+		[1] = {
+			caption = ReadText(1001, 46),
+			info = ReadText(1001, 3279),
+			overrideText = ReadText(1001, 8378),
+			type = "multiselectlist",
+			id = "trade_wares",
+			callback = function (...) return menu.filterTradeWares(...) end,
+			listOptions = function (...) return menu.getFilterTradeWaresOptions(...) end,
+			displayOption = function (option) return "\27[maptr_supply] " .. GetWareData(option, "name") end,
+		},
+		[2] = {
+			caption = ReadText(1001, 1400),
+			type = "checkbox",
+			callback = function (...) return menu.filterTradeStorage(...) end,
+			[1] = {
+				id = "trade_storage_container",
+				name = ReadText(20205, 100),
+				info = ReadText(1001, 3280),
+				param = "container",
+			},
+			[2] = {
+				id = "trade_storage_solid",
+				name = ReadText(20205, 200),
+				info = ReadText(1001, 3281),
+				param = "solid",
+			},
+			[3] = {
+				id = "trade_storage_liquid",
+				name = ReadText(20205, 300),
+				info = ReadText(1001, 3282),
+				param = "liquid",
+			},
+		},
+	}
+}
+
 local function compareCamera(c1, c2)
 	dx = c1.offset.x - c2.offset.x
 	dy = c1.offset.y - c2.offset.y
@@ -702,6 +793,7 @@ local function compareCamera(c1, c2)
 	dh = c1.cameradistance - c2.cameradistance
 	return dx * dx + dy * dy + dz * dz + dh * dh
 end
+
 
 -- monitor update(): perform mid-button focusedview drag
 function mod.onUpdate()
@@ -747,10 +839,12 @@ function mod.onUpdate()
 	end
 end
 
-function mod.onRenderTargetMiddleMouseDown()
+function mod.onRenderTargetMiddleMouseDown(modified)
 	--DebugError("middle mouse down")
 	menu.focusedpan = { mapstate = ffi.new("HoloMapState"),
-	                    mouseposi = table.pack(GetLocalMousePosition()) }
+	                    mouseposi = table.pack(GetLocalMousePosition()),
+						downtime = getElapsedTime(),
+						modified = modified}
 	C.GetMapState(menu.holomap, menu.focusedpan.mapstate)
 	local off = menu.focusedpan.mapstate.offset
 
@@ -772,24 +866,219 @@ function mod.onRenderTargetMiddleMouseDown()
 	--		.. ';\ncameraDist:' .. menu.focusedpan.mapstate.cameradistance)
 end
 
-function mod.onRenderTargetMiddleMouseUp()
-	--DebugError("middle mouse up")
-	menu.focusedpan = nil
-	C.StopPanMap(menu.holomap)
+local function save_trade_wares_list()
+	menu.savedTradeWares = {}
+	for _, ware in ipairs(menu.getFilterOption('trade_wares')) do
+		menu.savedTradeWares[ware] = 1
+	end
 end
 
-local orderDragSupport = {
-	--	order name					position parameter
-		["MoveWait"]				= 1,
-		["CollectDropsInRadius"]	= 1,
-		["DeployObjectAtPosition"]	= 1,
-		["AttackInRange"]			= 1,
-		["ProtectPosition"]			= 1,
-		["MiningCollect"]			= 1,
-		["MiningPlayer"]			= 1,
-		["Explore"]					= 2,
-		["ExploreUpdate"]			= 2,
-}
+local function load_trade_wares_list()
+	if menu.savedTradeWares ~= nil then
+		menu.setFilterOption("layer_trade", config.layer_trade[1], config.layer_trade[1].id, menu.savedTradeWares)
+	end
+end
+
+function mod.onRenderTargetMiddleMouseUp()
+	--DebugError("middle mouse up")
+	C.StopPanMap(menu.holomap)
+	if menu.focusedpan == nil then
+		return
+	end
+	local focusedpan = menu.focusedpan
+	local mouseposi = table.pack(GetLocalMousePosition())
+	local modified = focusedpan.modified
+	menu.focusedpan = nil
+
+	-- if middle-click
+	if getElapsedTime() - focusedpan.downtime < 0.5 and not Helper.comparePositions(focusedpan.mouseposi, mouseposi, 5) then
+		local obj = C.GetPickedMapComponent(menu.holomap)
+		local obj64 = ConvertStringTo64Bit(tostring(obj))
+		local clsname = ffi.string(C.GetComponentClass(obj))
+		if clsname == "sector" or clsname == '' then
+			if modified == 'ctrl' then
+				-- ctrl+click on empty space to save current trade filter list
+				save_trade_wares_list()
+			elseif modified == 'shift' then
+				-- shift+click on empty space to load saved trade filter list, turning on trade layer if not on
+				if not menu.getFilterOption('layer_trade') then
+					menu.buttonSetFilterLayer('layer_trade')
+				end
+				load_trade_wares_list()
+			else
+				-- click on empty space to toggle trade mode
+				menu.buttonSetFilterLayer('layer_trade')
+			end
+		elseif clsname == "station" then
+			if not menu.getFilterOption('layer_trade') then
+				menu.buttonSetFilterLayer('layer_trade')
+			end
+			-- trade offer
+			local tradeoffers = GetComponentData(obj64, "tradeoffers")
+			local cargos = {}
+			for _, tradeid in ipairs(tradeoffers) do
+				local trade = GetTradeData(tradeid)
+				if modified == 'ctrl' then
+					if trade.isbuyoffer then
+						cargos[trade.ware] = 1
+					end
+				elseif modified == 'shift' then
+					if trade.isselloffer then
+						cargos[trade.ware] = 1
+					end
+				else
+					cargos[trade.ware] = 1
+				end
+			end
+			menu.setFilterOption("layer_trade", config.layer_trade[1], config.layer_trade[1].id, cargos)
+		elseif C.IsComponentClass(obj, "ship") and GetComponentData(obj64, 'isplayerowned') then
+			if not menu.getFilterOption('layer_trade') then
+				menu.buttonSetFilterLayer('layer_trade')
+			end
+			local cargos = GetComponentData(obj64, "cargo")
+			menu.setFilterOption("layer_trade", config.layer_trade[1], config.layer_trade[1].id, cargos)
+			for _, option in ipairs(config.layer_trade[2]) do
+				if not menu.getFilterOption(option.id) then
+					menu.setFilterOption("layer_trade", config.layer_trade[2], option.id)
+				end
+			end
+		end
+		menu.refreshMainFrame = true
+	end
+end
+
+function mod.createSearchField(frame, width, height, offsetx, offsety, refresh)
+	local numCols = 6 + #config.layers
+	local ftable = frame:addTable(numCols, { tabOrder = 4, width = width, height = height, x = offsetx, y = offsety, skipTabChange = true, backgroundID = "solid", backgroundColor = Helper.color.semitransparent })
+	ftable:setDefaultCellProperties("text", { minRowHeight = config.mapRowHeight, fontsize = config.mapFontSize })
+	ftable:setDefaultCellProperties("button", { height = config.mapRowHeight })
+	ftable:setDefaultComplexCellProperties("button", "text", { fontsize = config.mapFontSize })
+
+	ftable:setColWidth(1, Helper.scaleY(config.mapRowHeight), false)
+	ftable:setColWidth(2, math.max(4, Helper.scaleY(Helper.headerRow1Height) - Helper.scaleY(config.mapRowHeight) - Helper.borderSize), false)
+	ftable:setColWidth(3, menu.sideBarWidth - Helper.scaleY(Helper.headerRow1Height) - Helper.borderSize, false)
+	for i = 2, #config.layers do
+		ftable:setColWidth(i + 2, menu.sideBarWidth, false)
+	end
+	ftable:setColWidth(numCols - 1, Helper.scaleY(config.mapRowHeight), false)
+	ftable:setColWidth(numCols, Helper.scaleY(config.mapRowHeight), false)
+
+	-- search field
+	local row = ftable:addRow(true, { fixed = true })
+	-- toggle trade filter
+	local colspan = 1
+	if menu.editboxHeight >= Helper.scaleY(config.mapRowHeight) then
+		colspan = 2
+	end
+	local entry = config.layers[1]
+	local icon = entry.icon
+	local isTradeOn = menu.getFilterOption(entry.mode)
+	if not isTradeOn then
+		icon = icon .. "_disabled"
+	end
+	local bgcolor = {r = 33, g = 46, b = 55, a = 40}
+	row[1]:setColSpan(colspan):createButton({ height = menu.editboxHeight, bgColor = bgcolor, mouseOverText = entry.name, scaling = false, helpOverlayID = "toggle_trade", helpOverlayText = " ", helpOverlayHighlightOnly = true}):setIcon(icon, { })
+	row[1].handlers.onClick = function () return menu.buttonSetFilterLayer(entry.mode, row.index, 1) end
+	-- reset camera view
+	row[colspan + 1]:setColSpan(1):createButton({ active = true, height = menu.editboxHeight, mouseOverText = ffi.string(C.GetLocalizedText(1026, 7911, ReadText(1026, 7902))), bgColor = bgcolor, scaling = false }):setIcon("menu_reset_view"):setHotkey("INPUT_STATE_DETAILMONITOR_RESET_VIEW", { displayIcon = false })
+	row[colspan + 1].handlers.onClick = menu.buttonResetView
+	-- save load buttons (when trade layer is on)
+	if isTradeOn then
+		row[2+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Save trade wares list', bgColor = bgcolor, scaling = false }):setText("save", {fontsize = menu.playerInfo.fontsize, halign = "center"})
+		row[2+colspan].handlers.onClick = save_trade_wares_list
+		row[3+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Load trade waves list', bgColor = bgcolor, scaling = false }):setText("load", {fontsize = menu.playerInfo.fontsize, halign = "center"})
+		row[3+colspan].handlers.onClick = load_trade_wares_list
+		colspan = colspan + 2
+	end
+	-- editbox
+	row[colspan + 2]:setColSpan(numCols - colspan - 1):createEditBox({ height = menu.editboxHeight, defaultText = ReadText(1001, 3250), scaling = false, helpOverlayID = "map_searchbar", helpOverlayText = " ", helpOverlayHighlightOnly = true, restoreInteractiveObject = true }):setText("", { x = Helper.standardTextOffsetx, scaling = true }):setHotkey("INPUT_STATE_DETAILMONITOR_0", { displayIcon = true })
+	row[colspan + 2].handlers.onEditBoxDeactivated = menu.searchTextConfirmed
+
+	-- search terms
+	local row = ftable:addRow(true, { fixed = true, bgColor = Helper.color.transparent })
+	local searchindex = 0
+	for i = 1, math.min(3, #menu.searchtext) do
+		local col = i
+		local colspan = 1
+		if col == 1 then
+			colspan = 6
+		else
+			col = col + 5
+		end
+		searchindex = searchindex + 1
+		row[col]:setColSpan(colspan)
+		local truncatedString = TruncateText(menu.searchtext[i].text, Helper.standardFont, Helper.scaleFont(Helper.standardFont, config.mapFontSize), row[col]:getWidth() - 2 * Helper.scaleX(10))
+
+		if menu.searchtext[i].blockRemove then
+			row[col]:createText(truncatedString, { halign = "center", cellBGColor = Helper.defaultButtonBackgroundColor })
+		else
+			row[col]:createButton({
+				helpOverlayID = "FilterItem" .. searchindex,
+				helpOverlayText = " ",
+				helpOverlayHighlightOnly = true,
+			}):setText(truncatedString, { halign = "center" }):setText2("X", { halign = "right" })
+			row[col].handlers.onClick = function () return menu.buttonRemoveSearchEntry(i) end
+		end
+	end
+
+	local setting = config.layer_trade[1]
+	local warefilter = menu.getFilterOption(setting.id) or {}
+	local searchindex = 0
+	if #menu.searchtext < 3 then
+		for i = 1, math.min(3 - #menu.searchtext, #warefilter) do
+			local col = i + #menu.searchtext
+			local colspan = 1
+			if col == 1 then
+				colspan = 6
+			else
+				col = col + 5
+			end
+			searchindex = searchindex + 1
+			row[col]:setColSpan(colspan)
+			local truncatedString = TruncateText(GetWareData(warefilter[i], "name"), Helper.standardFont, Helper.scaleFont(Helper.standardFont, config.mapFontSize), row[col]:getWidth() - 2 * Helper.scaleX(10))
+
+			row[col]:createButton({
+				helpOverlayID = "FilterWare" .. searchindex,
+				helpOverlayText = " ",
+				helpOverlayHighlightOnly = true,
+			}):setText(truncatedString, { halign = "center" }):setText2("X", { halign = "right" }):setIcon("maptr_supply", { width = Helper.standardTextHeight, height = Helper.standardTextHeight })
+			row[col].handlers.onClick = function () return menu.removeFilterOption(setting, setting.id, i) end
+			row[col].properties.uiTriggerID = "removefilteroption"
+		end
+	end
+
+	if (#menu.searchtext + #warefilter) > 3 then
+		row[5 + #config.layers]:setColSpan(2):createText(string.format("%+d", (#menu.searchtext + #warefilter) - 3))
+	else
+		row[5 + #config.layers]:setColSpan(2):createText("")
+	end
+
+	if menu.searchTableMode then
+		if menu.holomap ~= 0 then
+			C.SetMapStationInfoBoxMargin(menu.holomap, "right", menu.infoTableOffsetX + menu.infoTableWidth + config.contextBorder)
+		end
+		if (#menu.searchtext + #warefilter) > 0 then
+			local row = ftable:addRow(true, { fixed = true, bgColor = Helper.color.transparent })
+			row[1]:createText("")
+		end
+
+		if menu.searchTableMode == "filter" then
+			menu.createFilterMode(ftable, numCols)
+		elseif menu.searchTableMode == "legend" then
+			menu.createLegendMode(ftable, numCols)
+		elseif menu.searchTableMode == "hire" then
+			menu.createHireMode(ftable, numCols)
+		end
+	else
+		if menu.holomap ~= 0 then
+			C.SetMapStationInfoBoxMargin(menu.holomap, "right", 0)
+		end
+	end
+	if not refresh then
+		menu.createInfoFrame2()
+	end
+end
+
 function mod.onRenderTargetMouseDown(modified)
 	if menu.currentMouseCursor == 'trade' or menu.infoTableMode == "plots" then
 		return orig.onRenderTargetMouseDown(modified)
@@ -804,7 +1093,7 @@ function mod.onRenderTargetMouseDown(modified)
 		local orderdef = ffi.new("OrderDefinition")
 		if C.GetOrderDefinition(orderdef, pickedorder.orderdef) then
 			local orderdefid = ffi.string(orderdef.id)
-			if isintermediate or orderDragSupport[orderdefid] then
+			if isintermediate or config.orderDragSupport[orderdefid] then
 				menu.orderdrag = { component = pickedordercomponent, order = pickedorder, orderdefid = isintermediate and "MoveWait" or orderdefid, isintermediate = isintermediate, isclick = true }
 			end
 		end
@@ -829,6 +1118,7 @@ function mod.onRenderTargetMouseDown(modified)
 				C.StartPanMap(menu.holomap)
 				menu.panningmap = { isclick = true }
 			else
+				menu.panningmap = { isclick = true }
 				C.SetSelectedMapComponent(menu.holomap, obj)
 				menu.addSelectedComponent(obj, true)
 			end
@@ -965,10 +1255,33 @@ function mod.onTableRightMouseClick(uitable, row, posx, posy)
 		Helper.ffiVLA(components, "UniverseID", C.GetNumMapSelectedComponents, C.GetMapSelectedComponents, menu.holomap)
 		if #components > 0 then
 			C.SetFocusMapComponent(menu.holomap, components[1], false)
+		elseif menu.lastSelectedShip ~= nil then
+			C.SetFocusMapComponent(menu.holomap, menu.lastSelectedShip, false)
+			C.SetSelectedMapComponent(menu.holomap, menu.lastSelectedShip)
+			menu.infoSubmenuObject = menu.lastSelectedShip
+			AddUITriggeredEvent(menu.name, "selection_" .. (menu.lastSelectedType), menu.lastSelectedShip)
+			menu.selectedcomponents[tostring(menu.lastSelectedShip)] = {}
+			menu.updateTableSelection()
+			menu.refreshInfoFrame(nil, 0)
 		end
 	end
 
 	return orig.onTableRightMouseClick(uitable, row, posx, posy)
+end
+
+function mod.addSelectedComponent(component, clear, noupdate)
+	local compo64 = ConvertStringTo64Bit(tostring(component))
+	if GetComponentData(compo64, "isplayerowned") then
+		local clsname = ffi.string(C.GetComponentClass(compo64))
+		if clsname == 'station' then
+			menu.lastSelectedType = clsname
+			menu.lastSelectedShip = compo64
+		elseif string.sub(clsname, 1, 4)=='ship' then
+			menu.lastSelectedType = 'ship'
+			menu.lastSelectedShip = compo64
+		end
+	end
+	return orig.addSelectedComponent(component, clear, noupdate)
 end
 
 init()
