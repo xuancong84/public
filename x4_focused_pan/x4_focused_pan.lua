@@ -676,10 +676,8 @@ ffi.cdef [[
 ]]
 
 local function tprint(tbl, indent, endl)
-	local endl = endl or '\n'
-	if not indent then
-		indent = 0
-	end
+	endl = endl or '\n'
+	indent = indent or 0
 	local toprint = string.rep(" ", indent) .. "{" .. endl
 	indent = indent + 2
 	if type(tbl) ~= 'table' then
@@ -730,6 +728,8 @@ local config = {
 	mapRowHeight = Helper.standardTextHeight,
 	mapFontSize = Helper.standardFontSize,
 	contextBorder = 5,
+	tradeContextMenuInfoBorder = 15,
+	mapRowHeight = Helper.standardTextHeight,
 	layers = {
 		{ name = ReadText(1001, 3252),	icon = "mapst_fs_trade",		mode = "layer_trade",		helpOverlayID = "layer_trade",		helpOverlayText = ReadText(1028, 3214)  },
 		{ name = ReadText(1001, 3253),	icon = "mapst_fs_think",		mode = "layer_think",		helpOverlayID = "layer_think",		helpOverlayText = ReadText(1028, 3215)  },
@@ -879,6 +879,10 @@ local function load_trade_wares_list()
 	end
 end
 
+local function clear_trade_wares_list()
+	menu.setFilterOption("layer_trade", config.layer_trade[1], config.layer_trade[1].id, {})
+end
+
 function mod.onRenderTargetMiddleMouseUp()
 	--DebugError("middle mouse up")
 	C.StopPanMap(menu.holomap)
@@ -897,16 +901,19 @@ function mod.onRenderTargetMiddleMouseUp()
 		local clsname = ffi.string(C.GetComponentClass(obj))
 		if clsname == "sector" or clsname == '' then
 			if modified == 'ctrl' then
-				-- ctrl+click on empty space to save current trade filter list
+				-- ctrl+middle_click on empty space to save current trade filter list
 				save_trade_wares_list()
 			elseif modified == 'shift' then
-				-- shift+click on empty space to load saved trade filter list, turning on trade layer if not on
+				-- shift+middle_click on empty space to load saved trade filter list, turning on trade layer if not on
 				if not menu.getFilterOption('layer_trade') then
 					menu.buttonSetFilterLayer('layer_trade')
 				end
 				load_trade_wares_list()
+			elseif modified == 'both' then
+				-- ctrl+shift+middle_click on empty space to clear trade filter list
+				clear_trade_wares_list()
 			else
-				-- click on empty space to toggle trade mode
+				-- middle_click on empty space to toggle trade mode
 				menu.buttonSetFilterLayer('layer_trade')
 			end
 		elseif clsname == "station" then
@@ -931,16 +938,20 @@ function mod.onRenderTargetMiddleMouseUp()
 				end
 			end
 			menu.setFilterOption("layer_trade", config.layer_trade[1], config.layer_trade[1].id, cargos)
-		elseif C.IsComponentClass(obj, "ship") and GetComponentData(obj64, 'isplayerowned') then
-			if not menu.getFilterOption('layer_trade') then
-				menu.buttonSetFilterLayer('layer_trade')
-			end
-			local cargos = GetComponentData(obj64, "cargo")
-			menu.setFilterOption("layer_trade", config.layer_trade[1], config.layer_trade[1].id, cargos)
-			for _, option in ipairs(config.layer_trade[2]) do
-				if not menu.getFilterOption(option.id) then
-					menu.setFilterOption("layer_trade", config.layer_trade[2], option.id)
+		elseif C.IsComponentClass(obj, "ship") then
+			if GetComponentData(obj64, 'isplayerowned') then
+				if not menu.getFilterOption('layer_trade') then
+					menu.buttonSetFilterLayer('layer_trade')
 				end
+				local cargos = GetComponentData(obj64, "cargo")
+				menu.setFilterOption("layer_trade", config.layer_trade[1], config.layer_trade[1].id, cargos)
+				for _, option in ipairs(config.layer_trade[2]) do
+					if not menu.getFilterOption(option.id) then
+						menu.setFilterOption("layer_trade", config.layer_trade[2], option.id)
+					end
+				end
+			else
+				menu.setFilterOption("layer_trade", config.layer_trade[1], config.layer_trade[1].id, {})
 			end
 		end
 		menu.refreshMainFrame = true
@@ -977,18 +988,20 @@ function mod.createSearchField(frame, width, height, offsetx, offsety, refresh)
 		icon = icon .. "_disabled"
 	end
 	local bgcolor = {r = 33, g = 46, b = 55, a = 40}
-	row[1]:setColSpan(colspan):createButton({ height = menu.editboxHeight, bgColor = bgcolor, mouseOverText = entry.name, scaling = false, helpOverlayID = "toggle_trade", helpOverlayText = " ", helpOverlayHighlightOnly = true}):setIcon(icon, { })
+	row[1]:setColSpan(colspan):createButton({ height = menu.editboxHeight, bgColor = bgcolor, mouseOverText = entry.name .. '\n(middle-click)', scaling = false, helpOverlayID = "toggle_trade", helpOverlayText = " ", helpOverlayHighlightOnly = true}):setIcon(icon, { })
 	row[1].handlers.onClick = function () return menu.buttonSetFilterLayer(entry.mode, row.index, 1) end
 	-- reset camera view
 	row[colspan + 1]:setColSpan(1):createButton({ active = true, height = menu.editboxHeight, mouseOverText = ffi.string(C.GetLocalizedText(1026, 7911, ReadText(1026, 7902))), bgColor = bgcolor, scaling = false }):setIcon("menu_reset_view"):setHotkey("INPUT_STATE_DETAILMONITOR_RESET_VIEW", { displayIcon = false })
 	row[colspan + 1].handlers.onClick = menu.buttonResetView
 	-- save load buttons (when trade layer is on)
 	if isTradeOn then
-		row[2+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Save trade wares list', bgColor = bgcolor, scaling = false }):setText("save", {fontsize = menu.playerInfo.fontsize, halign = "center"})
+		row[2+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Save trade wares list\n(CTRL middle-click)', bgColor = bgcolor, scaling = false }):setText("SAVE", {fontsize = menu.playerInfo.fontsize, halign = "center"})
 		row[2+colspan].handlers.onClick = save_trade_wares_list
-		row[3+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Load trade waves list', bgColor = bgcolor, scaling = false }):setText("load", {fontsize = menu.playerInfo.fontsize, halign = "center"})
+		row[3+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Load trade waves list\n(SHIFT middle-click)', bgColor = bgcolor, scaling = false }):setText("LOAD", {fontsize = menu.playerInfo.fontsize, halign = "center"})
 		row[3+colspan].handlers.onClick = load_trade_wares_list
-		colspan = colspan + 2
+		row[4+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Clear trade waves list\n(CTRL+SHIFT middle-click)', bgColor = bgcolor, scaling = false }):setText("CLEAR", {fontsize = menu.playerInfo.fontsize, halign = "center"})
+		row[4+colspan].handlers.onClick = clear_trade_wares_list
+		colspan = colspan + 3
 	end
 	-- editbox
 	row[colspan + 2]:setColSpan(numCols - colspan - 1):createEditBox({ height = menu.editboxHeight, defaultText = ReadText(1001, 3250), scaling = false, helpOverlayID = "map_searchbar", helpOverlayText = " ", helpOverlayHighlightOnly = true, restoreInteractiveObject = true }):setText("", { x = Helper.standardTextOffsetx, scaling = true }):setHotkey("INPUT_STATE_DETAILMONITOR_0", { displayIcon = true })
@@ -1118,12 +1131,257 @@ function mod.onRenderTargetMouseDown(modified)
 				C.StartPanMap(menu.holomap)
 				menu.panningmap = { isclick = true }
 			else
-				menu.panningmap = { isclick = true }
 				C.SetSelectedMapComponent(menu.holomap, obj)
 				menu.addSelectedComponent(obj, true)
+				menu.panningmap = { isclick = true }
 			end
 		end
 	end
+end
+
+-- rendertarget selections
+function mod.onRenderTargetSelect(modified)
+	local offset = table.pack(GetLocalMousePosition())
+	-- Check if the mouse button was down less than 0.5 seconds and the mouse was moved more than a distance of 5px
+	if (not menu.leftdown) or ((menu.leftdown.time + 0.5 > getElapsedTime()) and not Helper.comparePositions(menu.leftdown.position, offset, 5)) then
+		if menu.mode == "selectbuildlocation" then
+			local station = 0
+			if menu.plotData.active then
+				local offset = ffi.new("UIPosRot")
+				local offsetvalid = C.GetBuildMapStationLocation(menu.holomap, offset)
+				if offsetvalid then
+					AddUITriggeredEvent(menu.name, "plotplaced")
+					station = C.ReserveBuildPlot(menu.plotData.sector, "player", menu.plotData.set, offset, menu.plotData.size.x * 1000, menu.plotData.size.y * 1000, menu.plotData.size.z * 1000)
+					if GetComponentData(ConvertStringTo64Bit(tostring(menu.plotData.sector)), "isplayerowned") then
+						local size = { x = menu.plotData.size.x * 1000, y = menu.plotData.size.y * 1000, z = menu.plotData.size.z * 1000 }
+						local plotcenter = { x = offset.x, y = offset.y, z = offset.z }
+						C.PayBuildPlotSize(station, size, plotcenter)
+					end
+					C.ClearMapBuildPlot(menu.holomap)
+					menu.plotData.active = nil
+				end
+			else
+				local pickedcomponent = C.GetPickedMapComponent(menu.holomap)
+				local pickedcomponentclass = ffi.string(C.GetRealComponentClass(pickedcomponent))
+				if (pickedcomponentclass == "station") and GetComponentData(ConvertStringToLuaID(tostring(pickedcomponent)), "isplayerowned") then
+					station = pickedcomponent
+				end
+			end
+
+			if station ~= 0 then
+				for _, row in ipairs(menu.table_plotlist.rows) do
+					if row.rowdata == station then
+						menu.setplotrow = row.index
+						menu.setplottoprow = (row.index - 12) > 1 and (row.index - 12) or 1
+						break
+					end
+				end
+
+				menu.updatePlotData(station, true)
+				menu.refreshInfoFrame()
+			end
+		elseif menu.mode == "orderparam_position" then
+			local offset = ffi.new("UIPosRot")
+			local eclipticoffset = ffi.new("UIPosRot")
+			local offsetcomponent = C.GetMapPositionOnEcliptic2(menu.holomap, offset, false, 0, eclipticoffset)
+			if offsetcomponent ~= 0 then
+				local class = ffi.string(C.GetComponentClass(offsetcomponent))
+				if (not menu.modeparam[2].inputparams.class) or (class == menu.modeparam[2].inputparams.class) then
+					menu.modeparam[1]({ConvertStringToLuaID(tostring(offsetcomponent)), {offset.x, offset.y, offset.z}})
+				elseif (menu.modeparam[2].inputparams.class == "zone") and (class == "sector") then
+					offsetcomponent = C.GetZoneAt(offsetcomponent, offset)
+					menu.modeparam[1]({ConvertStringToLuaID(tostring(offsetcomponent)), {offset.x, offset.y, offset.z}})
+				end
+			end
+		elseif (menu.mode == "orderparam_selectenemies") or (menu.mode == "orderparam_selectplayerdeployables") then
+			menu.mode = nil
+			menu.modeparam = {}
+			SetMouseCursorOverride("default")
+			menu.removeMouseCursorOverride(3)
+		elseif menu.mode == "boardingcontext" then
+
+		else
+			local colspan = 1
+			if menu.editboxHeight >= Helper.scaleY(config.mapRowHeight) then
+				colspan = 2
+			end
+			if menu.getFilterOption('layer_trade') then
+				colspan = colspan + 3
+			end
+			Helper.confirmEditBoxInput(menu.searchField, 1, colspan + 2)
+			local pickedcomponent = C.GetPickedMapComponent(menu.holomap)
+			local pickedorder = ffi.new("Order")
+			local isintermediate = ffi.new("bool[1]", 0)
+			local pickedordercomponent = C.GetPickedMapOrder(menu.holomap, pickedorder, isintermediate)
+			local pickedcomponentclass = ffi.string(C.GetComponentClass(pickedcomponent))
+			local ispickedcomponentship = C.IsComponentClass(pickedcomponent, "ship") and not C.IsUnit(pickedcomponent)
+			local pickedtradeoffer = C.GetPickedMapTradeOffer(menu.holomap)
+			if pickedordercomponent ~= 0 then
+				local sectorcontext = C.GetContextByClass(pickedordercomponent, "sector", false)
+				if sectorcontext ~= menu.currentsector then
+					menu.currentsector = sectorcontext
+				end
+
+				menu.createInfoFrame()
+			elseif pickedtradeoffer ~= 0 then
+				local tradeid = ConvertStringToLuaID(tostring(pickedtradeoffer))
+				local tradedata = GetTradeData(tradeid)
+				if tradedata.ware then
+					local setting = config.layer_trade[1]
+					local rawwarelist = menu.getFilterOption(setting.id) or {}
+					local found = false
+					for i, ware in ipairs(rawwarelist) do
+						if ware == tradedata.ware then
+							found = i
+							break
+						end
+					end
+					AddUITriggeredEvent(menu.name, "filterwareselected", tradedata.isbuyoffer and "buyoffer" or "selloffer")
+					if found then
+						menu.removeFilterOption(setting, setting.id, found)
+					else
+						menu.setFilterOption("layer_trade", setting, setting.id, tradedata.ware)
+					end
+				end
+			elseif pickedcomponent ~= 0 then
+				if (not menu.sound_selectedelement) or (menu.sound_selectedelement ~= pickedcomponent) or (modified == "ctrl") or (modified == "shift") then
+					local isselected = menu.isSelectedComponent(pickedcomponent)
+					if (not isselected) and (modified == "shift") then
+						PlaySound("ui_positive_multiselect")
+					elseif modified == "ctrl" then
+						if isselected then
+							PlaySound("ui_positive_deselect")
+						else
+							PlaySound("ui_positive_multiselect")
+						end
+					elseif (pickedcomponentclass == "sector") then
+						PlaySound("ui_positive_deselect")
+					else
+						PlaySound("ui_positive_select")
+					end
+				end
+				menu.sound_selectedelement = pickedcomponent
+				if menu.mode ~= "orderparam_object" then
+					menu.infoSubmenuObject = ConvertStringTo64Bit(tostring(pickedcomponent))
+					if menu.infoTableMode == "info" then
+						menu.refreshInfoFrame(nil, 0)
+					elseif menu.searchTableMode == "info" then
+						menu.refreshInfoFrame2(nil, 0)
+					end
+				end
+
+				if pickedcomponentclass == "sector" then
+					AddUITriggeredEvent(menu.name, "selection_reset")
+					menu.clearSelectedComponents()
+					if pickedcomponent ~= menu.currentsector then
+						menu.currentsector = pickedcomponent
+						menu.updateMapAndInfoFrame()
+					end
+				elseif (#menu.searchtext == 0) or Helper.textArrayHelper(menu.searchtext, function (numtexts, texts) return C.FilterComponentByText(pickedcomponent, numtexts, texts, true) end) then
+					local isconstruction = IsComponentConstruction(ConvertStringTo64Bit(tostring(pickedcomponent)))
+					if (C.IsComponentOperational(pickedcomponent) and (pickedcomponentclass ~= "player") and (pickedcomponentclass ~= "collectablewares") and (not menu.createInfoFrameRunning)) or
+						(pickedcomponentclass == "gate") or (pickedcomponentclass == "asteroid") or isconstruction
+					then
+						local sectorcontext = C.GetContextByClass(pickedcomponent, "sector", false)
+						if sectorcontext ~= menu.currentsector then
+							menu.currentsector = sectorcontext
+						end
+
+						if modified == "ctrl" then
+							menu.toggleSelectedComponent(pickedcomponent)
+						else
+							if pickedcomponentclass == "station" then
+								AddUITriggeredEvent(menu.name, "selection_station", ConvertStringTo64Bit(tostring(pickedcomponent)))
+							end
+							if (pickedcomponentclass == "ship_s") or (pickedcomponentclass == "ship_m") or (pickedcomponentclass == "ship_l") or (pickedcomponentclass == "ship_xl") then
+								AddUITriggeredEvent(menu.name, "selection_ship", ConvertStringTo64Bit(tostring(pickedcomponent)))
+							end
+							if (pickedcomponentclass == "resourceprobe") then
+								AddUITriggeredEvent(menu.name, "selection_resourceprobe", ConvertStringTo64Bit(tostring(pickedcomponent)))
+							end
+
+							local newmode
+							if (menu.mode ~= "selectComponent") or (menu.modeparam[3] ~= "deployables") then
+								if menu.infoTableMode == "objectlist" then
+									local isdeployable = GetComponentData(ConvertStringTo64Bit(tostring(pickedcomponent)), "isdeployable")
+									if isdeployable or (pickedcomponentclass == "lockbox") then
+										newmode = "deployables"
+									elseif menu.objectMode ~= "objectall" then
+										if C.IsRealComponentClass(pickedcomponent, "station") then
+											newmode = "stations"
+										elseif ispickedcomponentship then
+											local found = false
+											local commanderlist = GetAllCommanders(ConvertStringTo64Bit(tostring(pickedcomponent)))
+											for i, entry in ipairs(commanderlist) do
+												if IsComponentClass(entry, "station") then
+													found = true
+													break
+												end
+											end
+											if found then
+												newmode = "stations"
+											else
+												newmode = "ships"
+											end
+										end
+									end
+								elseif menu.infoTableMode == "propertyowned" then
+									local isplayerowned, isdeployable = GetComponentData(ConvertStringTo64Bit(tostring(pickedcomponent)), "isplayerowned", "isdeployable")
+									if isplayerowned then
+										if isdeployable or (pickedcomponentclass == "lockbox") then
+											newmode = "deployables"
+										elseif menu.propertyMode ~= "propertyall" then
+											if C.IsRealComponentClass(pickedcomponent, "station") then
+												newmode = "stations"
+											elseif ispickedcomponentship then
+												local found = false
+												local commanderlist = GetAllCommanders(ConvertStringTo64Bit(tostring(pickedcomponent)))
+												for i, entry in ipairs(commanderlist) do
+													if IsComponentClass(entry, "station") then
+														found = true
+														break
+													end
+												end
+												if found then
+													newmode = "stations"
+												else
+													if #commanderlist > 0 then
+														newmode = "fleets"
+													else
+														newmode = "unassignedships"
+													end
+												end
+											end
+										end
+									end
+								end
+							end
+							menu.addSelectedComponent(pickedcomponent, not modified)
+							if newmode then
+								if menu.infoTableMode == "objectlist" then
+									if newmode ~= menu.objectMode then
+										menu.objectMode = newmode
+										menu.refreshInfoFrame()
+									end
+								elseif menu.infoTableMode == "propertyowned" then
+									if newmode ~= menu.propertyMode then
+										menu.propertyMode = newmode
+										menu.refreshInfoFrame()
+									end
+								end
+							end
+						end
+					end
+				end
+			else
+				if (menu.mode ~= "info") or (not menu.infoMode.left) or (menu.infoMode.left == "objectinfo") or (menu.infoMode.left == "objectcrew") or (menu.infoMode.left == "objectloadout") then
+					AddUITriggeredEvent(menu.name, "selection_reset")
+					menu.clearSelectedComponents()
+				end
+			end
+		end
+	end
+	menu.leftdown = nil
 end
 
 function mod.buttonResetView()
@@ -1282,6 +1540,40 @@ function mod.addSelectedComponent(component, clear, noupdate)
 		end
 	end
 	return orig.addSelectedComponent(component, clear, noupdate)
+end
+
+function mod.onRenderTargetRightMouseUp(modified)
+	local pickedtradeoffer = C.GetPickedMapTradeOffer(menu.holomap)
+	if pickedtradeoffer ~= 0 then
+		menu.trade_slider_auto = 1
+	end
+	pcall(orig.onRenderTargetRightMouseUp, modified)
+	if menu.trade_slider_auto == 2 then
+		menu.trade_slider_auto = nil
+		local waredata = menu.trade_slider_ware
+		menu.slidercellShipCargo(waredata.sell and waredata.sell.id, waredata.buy and waredata.buy.id, waredata.ware, 0, menu.trade_slider_amount)
+		menu.slidercellTradeConfirmed(waredata.ware)
+	end
+end
+
+function mod.getTradeContextRowContent(waredata)
+	local content = orig.getTradeContextRowContent(waredata)
+	if menu.trade_slider_auto == 1 and menu.contextMenuMode == 'trade' and menu.contextMenuData and menu.contextMenuData.tradeid then
+		local tradedata = GetTradeData(menu.contextMenuData.tradeid)
+		if tradedata.ware == waredata.ware and waredata.active == true then
+			if tradedata.isbuyoffer and waredata.buy and waredata.buy.isbuyoffer==true then
+				menu.trade_slider_auto = 2
+				menu.trade_slider_amount = content[4].scale.minselect
+				content[4].scale.start = content[4].scale.minselect
+			elseif tradedata.isselloffer and waredata.sell and waredata.sell.isselloffer==true then
+				menu.trade_slider_auto = 2
+				menu.trade_slider_amount = content[4].scale.maxselect
+				content[4].scale.start = content[4].scale.maxselect
+			end
+			menu.trade_slider_ware = waredata
+		end
+	end
+	return content
 end
 
 init()
