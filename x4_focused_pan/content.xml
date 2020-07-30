@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<content id="x4_focused_pan" name="x4_focused_pan" description="X4 Mod for map panning on focused objects" author="xuancong84" version="001" date="2020-06-04" save="false" sync="false">
+<content id="x4_focused_pan" name="x4_focused_pan" description="X4 UI Mod for more comfortable game-play" author="xuancong84" version="001" date="2020-06-04" save="false" sync="false">
   <!-- Maybe fill out individual languages. -->
-  <langugage description="X4 Mod for map panning on focused objects" language="7"/>
-  <langugage description="X4 Mod for map panning on focused objects" language="33"/>
-  <langugage description="X4 Mod for map panning on focused objects" language="37"/>
-  <langugage description="X4 Mod for map panning on focused objects" language="39"/>
-  <langugage description="X4 Mod for map panning on focused objects" language="44"/>
-  <langugage description="X4 Mod for map panning on focused objects" language="49"/>
-  <langugage description="X4 Mod for map panning on focused objects" language="55"/>
-  <langugage description="X4 Mod for map panning on focused objects" language="81"/>
-  <langugage description="X4 Mod for map panning on focused objects" language="82"/>
-  <langugage description="X4 Mod for map panning on focused objects" language="86"/>
-  <langugage description="X4 Mod for map panning on focused objects" language="88"/>
+  <langugage description="X4 UI Mod for more comfortable game-play" language="7"/>
+  <langugage description="X4 UI Mod for more comfortable game-play" language="33"/>
+  <langugage description="X4 UI Mod for more comfortable game-play" language="37"/>
+  <langugage description="X4 UI Mod for more comfortable game-play" language="39"/>
+  <langugage description="X4 UI Mod for more comfortable game-play" language="44"/>
+  <langugage description="X4 UI Mod for more comfortable game-play" language="49"/>
+  <langugage description="X4 UI Mod for more comfortable game-play" language="55"/>
+  <langugage description="X4 UI Mod for more comfortable game-play" language="81"/>
+  <langugage description="X4 UI Mod for more comfortable game-play" language="82"/>
+  <langugage description="X4 UI Mod for more comfortable game-play" language="86"/>
+  <langugage description="X4 UI Mod for more comfortable game-play" language="88"/>
 </content>

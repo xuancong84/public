@@ -9,6 +9,11 @@ ffi.cdef [[
 	typedef uint64_t TradeID;
 	typedef uint64_t UniverseID;
 	typedef struct {
+		const char* ware;
+		const char* macro;
+		int amount;
+	} UIWareInfo;
+	typedef struct {
 		const char* macro;
 		const char* ware;
 		uint32_t amount;
@@ -673,18 +678,23 @@ ffi.cdef [[
 	bool UpdateAttackerOfBoardingOperation(UniverseID defensibletargetid, UniverseID defensibleboarderid, const char* boarderfactionid, const char* actionid, uint32_t* marinetieramounts, int32_t* marinetierskilllevels, uint32_t nummarinetiers);
 	bool UpdateBoardingOperation(UniverseID defensibletargetid, const char* boarderfactionid, uint32_t approachthreshold, uint32_t insertionthreshold);
 	void UpdateMapBuildPlot(UniverseID holomapid);
+	uint32_t PrepareBuildSequenceResources(UniverseID holomapid, UniverseID stationid);
+	uint32_t GetBuildSequenceResources(UIWareInfo* result, uint32_t resultlen);
+	size_t GetNumBuildMapConstructionPlan(UniverseID holomapid, bool usestoredplan);
+	size_t GetBuildMapConstructionPlan(UniverseID holomapid, UniverseID defensibleid, bool usestoredplan, UIConstructionPlanEntry* result, uint32_t resultlen);
 ]]
 
-local function tprint(tbl, indent, endl)
+local function tprint(tbl, indent, endl, indchar)
 	endl = endl or '\n'
+	indchar = indchar or ' '
 	indent = indent or 0
-	local toprint = string.rep(" ", indent) .. "{" .. endl
+	local toprint = string.rep(indchar, indent) .. "{" .. endl
 	indent = indent + 2
 	if type(tbl) ~= 'table' then
-		return 'Not a table: value=' .. tostring(tbl)
+		return 'type(' .. type(tbl) .. ')=' .. (pcall(tostring, tbl) and tostring(tbl) or '??')
 	end
 	for k, v in pairs(tbl) do
-		toprint = toprint .. string.rep(" ", indent)
+		toprint = toprint .. string.rep(indchar, indent)
 		if (type(k) == "number") then
 			toprint = toprint .. "[" .. k .. "] = "
 		elseif (type(k) == "string") then
@@ -695,12 +705,12 @@ local function tprint(tbl, indent, endl)
 		elseif (type(v) == "string") then
 			toprint = toprint .. "\"" .. v .. "\"," .. endl
 		elseif (type(v) == "table") then
-			toprint = toprint .. tprint(v, indent + 2) .. "," .. endl
+			toprint = toprint .. tprint(v, indent + 2, endl, indchar) .. "," .. endl
 		else
 			toprint = toprint .. "\"" .. tostring(v) .. "\"," .. endl
 		end
 	end
-	toprint = toprint .. string.rep(" ", indent - 2) .. "}"
+	toprint = toprint .. string.rep(indchar, indent - 2) .. "}"
 	return toprint
 end
 
@@ -730,6 +740,7 @@ local config = {
 	contextBorder = 5,
 	tradeContextMenuInfoBorder = 15,
 	mapRowHeight = Helper.standardTextHeight,
+	addColSpan = 4,
 	layers = {
 		{ name = ReadText(1001, 3252),	icon = "mapst_fs_trade",		mode = "layer_trade",		helpOverlayID = "layer_trade",		helpOverlayText = ReadText(1028, 3214)  },
 		{ name = ReadText(1001, 3253),	icon = "mapst_fs_think",		mode = "layer_think",		helpOverlayID = "layer_think",		helpOverlayText = ReadText(1028, 3215)  },
@@ -856,7 +867,29 @@ function mod.onRenderTargetMiddleMouseDown(modified)
 	menu.focusedpan.cs_x = {cos_yaw, 0., -sin_yaw}
 	menu.focusedpan.cs_y = {-sin_yaw*sin_pitch, cos_pitch, -cos_yaw*sin_pitch}
 
+	-- For DEBUG info display
 	--local obj = C.GetPickedMapComponent(menu.holomap)
+	--local obj64 = ConvertIDTo64Bit(Helper.convertComponentIDs(obj))
+	--if C.IsComponentClass(obj, 'station') then
+	--	AddLogbookEntry('tips', 'station name=' .. (ffi.string(C.GetComponentName(obj))))
+	--
+	--	local neededresources = {}
+	--	local numTotalResources = C.PrepareBuildSequenceResources(menu.holomap, obj)
+	--	if numTotalResources > 0 then
+	--		local buf = ffi.new("UIWareInfo[?]", numTotalResources)
+	--		numTotalResources = C.GetBuildSequenceResources(buf, numTotalResources)
+	--		for i = 0, numTotalResources - 1 do
+	--			table.insert(neededresources, { ware = ffi.string(buf[i].ware), amount = buf[i].amount })
+	--		end
+	--	end
+	--	AddLogbookEntry('tips', 'numTotalResources='.. numTotalResources ..' ; neededresources=' .. tprint(neededresources))
+	--
+	--	local n = C.GetNumBuildMapConstructionPlan(menu.holomap, false)
+	--	AddLogbookEntry('tips', 'GetNumBuildMapConstructionPlan=' .. n)
+	--	local buf = ffi.new("UIConstructionPlanEntry[?]", n)
+	--	n = tonumber(C.GetBuildMapConstructionPlan(menu.holomap, obj, false, buf, n))
+	--	AddLogbookEntry('tips', 'GetBuildMapConstructionPlan=' .. n)
+	--end
 	--menu.focusedpan.rtmouseposi = table.pack(GetRenderTargetMousePosition(menu.map))
 	--AddLogbookEntry('tips', 'Object:UID=' .. ConvertStringTo64Bit(tostring(obj)) .. ',name='
 	--		.. ffi.string(C.GetComponentName(obj)) .. ',class=' .. ffi.string(C.GetComponentClass(obj))
@@ -866,16 +899,38 @@ function mod.onRenderTargetMiddleMouseDown(modified)
 	--		.. ';\ncameraDist:' .. menu.focusedpan.mapstate.cameradistance)
 end
 
-local function save_trade_wares_list()
-	menu.savedTradeWares = {}
+local function get_trade_wares_list(n)
+	n = n or 0
+	menu.savedTradeWares = menu.savedTradeWares or {
+		{energycells=1, claytronics=1, hullparts=1},
+		{advancedcomposites=1, advancedelectronics=1, antimattercells=1, antimatterconverters=1, claytronics=1, dronecomponents=1, engineparts=1, fieldcoils=1, graphene=1, hullparts=1, microchips=1, missilecomponents=1, plasmaconductors=1, quantumtubes=1, refinedmetals=1, scanningarrays=1, shieldcomponents=1, siliconwafers=1, smartchips=1, superfluidcoolant=1, teladianium=1, turretcomponents=1, weaponcomponents=1},
+		{advancedcomposites=1, advancedelectronics=1, antimattercells=1, antimatterconverters=1, claytronics=1, dronecomponents=1, energycells=1, engineparts=1, fieldcoils=1, foodrations=1, graphene=1, hullparts=1, majasnails=1, meat=1, medicalsupplies=1, microchips=1, missilecomponents=1, nostropoil=1, plasmaconductors=1, quantumtubes=1, refinedmetals=1, scanningarrays=1, shieldcomponents=1, siliconwafers=1, smartchips=1, sojabeans=1, sojahusk=1, spices=1, sunriseflowers=1, superfluidcoolant=1, swampplant=1, swampplant=1, teladianium=1, turretcomponents=1, weaponcomponents=1, wheat=1, cheltmeat=1, scruffinfruits=1}
+	}
+	menu.savedTradeWares[n] = menu.savedTradeWares[n] or {}
+	return menu.savedTradeWares[n]
+end
+
+local function print_trade_wares_list(n)
+	local warelist = get_trade_wares_list(n)
+	local warearray = {}
+	for ware, _ in pairs(warelist) do
+		table.insert(warearray, ware)
+	end
+	return '[ ' .. table.concat(warearray, ', ') .. ' ]'
+end
+
+local function save_trade_wares_list(n)
+	local warelist = get_trade_wares_list(n)
+	for k in pairs(warelist) do warelist[k] = nil end
 	for _, ware in ipairs(menu.getFilterOption('trade_wares')) do
-		menu.savedTradeWares[ware] = 1
+		warelist[ware] = 1
 	end
 end
 
-local function load_trade_wares_list()
-	if menu.savedTradeWares ~= nil then
-		menu.setFilterOption("layer_trade", config.layer_trade[1], config.layer_trade[1].id, menu.savedTradeWares)
+local function load_trade_wares_list(n)
+	local warelist = get_trade_wares_list(n)
+	if next(warelist) ~= nil then
+		menu.setFilterOption("layer_trade", config.layer_trade[1], config.layer_trade[1].id, warelist)
 	end
 end
 
@@ -959,7 +1014,7 @@ function mod.onRenderTargetMiddleMouseUp()
 end
 
 function mod.createSearchField(frame, width, height, offsetx, offsety, refresh)
-	local numCols = 6 + #config.layers
+	local numCols = 8 + #config.layers
 	local ftable = frame:addTable(numCols, { tabOrder = 4, width = width, height = height, x = offsetx, y = offsety, skipTabChange = true, backgroundID = "solid", backgroundColor = Helper.color.semitransparent })
 	ftable:setDefaultCellProperties("text", { minRowHeight = config.mapRowHeight, fontsize = config.mapFontSize })
 	ftable:setDefaultCellProperties("button", { height = config.mapRowHeight })
@@ -968,7 +1023,7 @@ function mod.createSearchField(frame, width, height, offsetx, offsety, refresh)
 	ftable:setColWidth(1, Helper.scaleY(config.mapRowHeight), false)
 	ftable:setColWidth(2, math.max(4, Helper.scaleY(Helper.headerRow1Height) - Helper.scaleY(config.mapRowHeight) - Helper.borderSize), false)
 	ftable:setColWidth(3, menu.sideBarWidth - Helper.scaleY(Helper.headerRow1Height) - Helper.borderSize, false)
-	for i = 2, #config.layers do
+	for i = 2, (#config.layers+2) do
 		ftable:setColWidth(i + 2, menu.sideBarWidth, false)
 	end
 	ftable:setColWidth(numCols - 1, Helper.scaleY(config.mapRowHeight), false)
@@ -995,16 +1050,22 @@ function mod.createSearchField(frame, width, height, offsetx, offsety, refresh)
 	row[colspan + 1].handlers.onClick = menu.buttonResetView
 	-- save load buttons (when trade layer is on)
 	if isTradeOn then
-		row[2+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Save trade wares list\n(CTRL middle-click)', bgColor = bgcolor, scaling = false }):setText("SAVE", {fontsize = menu.playerInfo.fontsize, halign = "center"})
-		row[2+colspan].handlers.onClick = save_trade_wares_list
-		row[3+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Load trade waves list\n(SHIFT middle-click)', bgColor = bgcolor, scaling = false }):setText("LOAD", {fontsize = menu.playerInfo.fontsize, halign = "center"})
-		row[3+colspan].handlers.onClick = load_trade_wares_list
-		row[4+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Clear trade waves list\n(CTRL+SHIFT middle-click)', bgColor = bgcolor, scaling = false }):setText("CLEAR", {fontsize = menu.playerInfo.fontsize, halign = "center"})
-		row[4+colspan].handlers.onClick = clear_trade_wares_list
-		colspan = colspan + 3
+		row[2+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Load ware list 1 = ' .. print_trade_wares_list(1) .. '\n(Right-click to save to list 1)', bgColor = bgcolor, scaling = false }):setText("Slot1", {fontsize = menu.playerInfo.fontsize, halign = "center"})
+		row[2+colspan].handlers.onClick = function() load_trade_wares_list(1) end
+		row[2+colspan].handlers.onRightClick = function() save_trade_wares_list(1) end
+		row[3+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Load wave list 2 = ' .. print_trade_wares_list(2) .. '\n(Right-click to save to list 2)', bgColor = bgcolor, scaling = false }):setText("Slot2", {fontsize = menu.playerInfo.fontsize, halign = "center"})
+		row[3+colspan].handlers.onClick = function() load_trade_wares_list(2) end
+		row[3+colspan].handlers.onRightClick = function() save_trade_wares_list(2) end
+		row[4+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Load wave list 3 = ' .. print_trade_wares_list(3) .. '\n(Right-click to save to list 3)', bgColor = bgcolor, scaling = false }):setText("Slot3", {fontsize = menu.playerInfo.fontsize, halign = "center"})
+		row[4+colspan].handlers.onClick = function() load_trade_wares_list(3) end
+		row[4+colspan].handlers.onRightClick = function() save_trade_wares_list(3) end
+		row[5+colspan]:createButton({ height = menu.editboxHeight, mouseOverText = 'Clear trade waves list (or CTRL+SHIFT middle-click)\nRight-click to reset all slots\nCTRL/SHIFT middle-click on map to save/load Slot0', bgColor = bgcolor, scaling = false }):setText("CLEAR", {fontsize = menu.playerInfo.fontsize, halign = "center"})
+		row[5+colspan].handlers.onClick = clear_trade_wares_list
+		row[5+colspan].handlers.onRightClick = function () menu.savedTradeWares=nil end
+		colspan = colspan + config.addColSpan
 	end
 	-- editbox
-	row[colspan + 2]:setColSpan(numCols - colspan - 1):createEditBox({ height = menu.editboxHeight, defaultText = ReadText(1001, 3250), scaling = false, helpOverlayID = "map_searchbar", helpOverlayText = " ", helpOverlayHighlightOnly = true, restoreInteractiveObject = true }):setText("", { x = Helper.standardTextOffsetx, scaling = true }):setHotkey("INPUT_STATE_DETAILMONITOR_0", { displayIcon = true })
+	row[colspan + 2]:setColSpan(numCols):createEditBox({ height = menu.editboxHeight, defaultText = ReadText(1001, 3250), scaling = false, helpOverlayID = "map_searchbar", helpOverlayText = " ", helpOverlayHighlightOnly = true, restoreInteractiveObject = true }):setText("", { x = Helper.standardTextOffsetx, scaling = true }):setHotkey("INPUT_STATE_DETAILMONITOR_0", { displayIcon = true })
 	row[colspan + 2].handlers.onEditBoxDeactivated = menu.searchTextConfirmed
 
 	-- search terms
@@ -1012,11 +1073,14 @@ function mod.createSearchField(frame, width, height, offsetx, offsety, refresh)
 	local searchindex = 0
 	for i = 1, math.min(3, #menu.searchtext) do
 		local col = i
-		local colspan = 1
+		local colspan = 2
 		if col == 1 then
-			colspan = 6
+			colspan = 5
+		elseif col == 2 then
+			colspan = 3
+			col = col + 4
 		else
-			col = col + 5
+			col = col + 6
 		end
 		searchindex = searchindex + 1
 		row[col]:setColSpan(colspan)
@@ -1040,11 +1104,14 @@ function mod.createSearchField(frame, width, height, offsetx, offsety, refresh)
 	if #menu.searchtext < 3 then
 		for i = 1, math.min(3 - #menu.searchtext, #warefilter) do
 			local col = i + #menu.searchtext
-			local colspan = 1
+			local colspan = 2
 			if col == 1 then
-				colspan = 6
+				colspan = 5
+			elseif col == 2 then
+				colspan = 3
+				col = col + 4
 			else
-				col = col + 5
+				col = col + 6
 			end
 			searchindex = searchindex + 1
 			row[col]:setColSpan(colspan)
@@ -1061,9 +1128,9 @@ function mod.createSearchField(frame, width, height, offsetx, offsety, refresh)
 	end
 
 	if (#menu.searchtext + #warefilter) > 3 then
-		row[5 + #config.layers]:setColSpan(2):createText(string.format("%+d", (#menu.searchtext + #warefilter) - 3))
+		row[numCols-1]:setColSpan(2):createText(string.format("%+d", (#menu.searchtext + #warefilter) - 3))
 	else
-		row[5 + #config.layers]:setColSpan(2):createText("")
+		row[numCols-1]:setColSpan(2):createText("")
 	end
 
 	if menu.searchTableMode then
@@ -1206,7 +1273,7 @@ function mod.onRenderTargetSelect(modified)
 				colspan = 2
 			end
 			if menu.getFilterOption('layer_trade') then
-				colspan = colspan + 3
+				colspan = colspan + config.addColSpan
 			end
 			Helper.confirmEditBoxInput(menu.searchField, 1, colspan + 2)
 			local pickedcomponent = C.GetPickedMapComponent(menu.holomap)
