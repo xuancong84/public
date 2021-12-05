@@ -1,9 +1,17 @@
 # Public small files for sharing
-x4_focused_pan : x4-foundations UI patch for comfortable play experience
 
+# 1. RPi4 : Raspberry Pi 4 utilities
+See /boot/switch-\*.sh
+- switch between HDMI/TFT display
+- switch between PXE/microSD boot
+- switch between using fbcp (a user program that keeps copying frame-buffer) or direct /dev/fb1 (X11 directly render to /dev/fb1)
+
+
+
+# 2. x4\_focused\_pan : x4-foundations UI patch for comfortable play experience
 Version: 2.0 (for game version 3.20)
 #### How to install?
-Download the zip archive, extract the x4_focused_pan folder to <game_folder>/extensions/
+Download the zip archive, extract the x4\_focused\_pan folder to <game_folder>/extensions/
 
 
 #### Modifications:

@@ -1,0 +1,1 @@
+console=serial0,115200 console=tty1 root=/dev/nfs nfsroot=192.168.50.2:/nfs/rootfs,vers=3 rw ip=dhcp elevator=deadline rootwait 

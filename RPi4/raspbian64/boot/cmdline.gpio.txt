@@ -1,0 +1,1 @@
+console=serial0,115200 console=tty1 root=PARTUUID=4f06fd23-02 rootfstype=ext4 elevator=deadline rootwait fbcon=map:10 fbcon=font:ProFont6x11 logo.nologo 
