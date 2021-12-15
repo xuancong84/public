@@ -96,6 +96,9 @@ def gamelist_merge(output, sources, out_path, src_dirs, rule):
 				if k not in bl_info:    # for new field just add
 					e = ET.Element(k)
 					e.text = v
+					if len(bl_game):
+						e.tail = bl_game[-1].tail
+						bl_game[-1].tail = bl_game[0].tail
 					bl_game.append(e)
 					copyOverFileIfNeeded(src_path, v, out_path, v)
 					continue
