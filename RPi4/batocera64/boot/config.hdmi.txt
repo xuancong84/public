@@ -29,7 +29,7 @@ disable_overscan=1
 #framebuffer_height=720
 
 # uncomment if hdmi display is not detected and composite is being output
-#hdmi_force_hotplug=1
+hdmi_force_hotplug=1
 
 # uncomment to force a specific HDMI mode (this will force VGA)
 hdmi_group=1
@@ -70,12 +70,12 @@ initramfs boot/initrd.gz
 
 # enable UART (required for for retroflag)
 # affect rpi performances
-# enable_uart=1
+enable_uart=1
 
 # Uncomment some or all of these to enable the optional hardware interfaces
 #dtparam=i2c_arm=on
 #dtparam=i2s=on
-#dtparam=spi=on
+dtparam=spi=on
 
 # Uncomment this to enable infrared communication.
 #dtoverlay=gpio-ir,gpio_pin=17
@@ -88,7 +88,7 @@ dtparam=audio=on
 
 [rpi4]
 # Enable DRM VC4 V3D driver on top of the dispmanx display stack
-dtoverlay=vc4-kms-v3d-pi4,noaudio
+dtoverlay=vc4-kms-v3d-pi4
 dtparam=i2c_arm=on
 dtparam=i2c-1=on
 over_voltage=4
