@@ -7,6 +7,13 @@ def normalize_dir(path):
 	return os.path.expanduser(path).rstrip('/')+'/'
 
 
+def get_cue_filelist(fn):
+	dir = os.path.dirname(fn)
+	entries = [L for L in open(fn).readlines() if L.strip().startswith('FILE')]
+	out = [L[L.find('"')+1:L.rfind('"')] for L in entries]
+	return [dir+'/'+f for f in out]
+
+
 def getFileSize(path, fn):
 	if not path:
 		return 0
@@ -27,6 +34,12 @@ def copyOverFiles(src_full, dst_path):
 				shutil.move(file, dst_path)
 			else:
 				shutil.copy(file, dst_path)
+		if src_full.lower().endswith('.cue'):
+			for file in get_cue_filelist(src_full):
+				if move:
+					shutil.move(file, dst_path)
+				else:
+					shutil.copy(file, dst_path)
 	except Exception as e:
 		print(f'Error: {str(e)}', file = sys.stderr)
 		return False

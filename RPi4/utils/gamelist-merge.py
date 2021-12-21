@@ -8,6 +8,13 @@ def normalize_dir(path):
 	return os.path.expanduser(path).rstrip('/')+'/'
 
 
+def get_cue_filelist(fn):
+	dir = os.path.dirname(fn)
+	entries = [L for L in open(fn).readlines() if L.strip().startswith('FILE')]
+	out = [L[L.find('"')+1:L.rfind('"')] for L in entries]
+	return [dir+'/'+f for f in out]
+
+
 def get_game_id(game):
 	global key, normalize
 	if game.find(key) == None:
@@ -21,26 +28,29 @@ def getFileSize(path, fn):
 	if not path:
 		return 0
 	try:
-		return os.path.getsize(path+fn)
+		ret = os.path.getsize(path+fn)
+		return ret+sum([os.path.getsize(f1) for f1 in get_cue_filelist(path+fn)]) if fn.lower().endswith('.cue') else ret
 	except:
 		return 0
 
 
-def deleteFileIfNeeded(path, fn):
+def deleteFileIfNeeded(path, fn):   # non-ROM
 	try:
 		print(f'Deleting {path+fn} ...', file = sys.stderr)
 		os.remove(path+fn)
+	except FileNotFoundError as e:
+		pass
 	except Exception as e:
 		print(f'Error: {str(e)}', file = sys.stderr)
 
 
-def copyOverFileIfNeeded(src_path, src_fn, dst_path, dst_fn):
+def copyOverFileIfNeeded(src_path, src_fn, dst_path, dst_fn):   # non-ROM
 	try:
 		if src_path=='' or dst_path=='' or not src_fn.startswith('./') or not dst_fn.startswith('./'):
 			return
-		src_full = src_path + src_fn
-		dst_full = dst_path + dst_fn
-		src_size, dst_size = getFileSize(src_path, src_fn), getFileSize(dst_path, dst_fn)
+		src_full = src_path + src_fn[2:]
+		dst_full = dst_path + dst_fn[2:]
+		src_size, dst_size = getFileSize(src_path, src_fn[2:]), getFileSize(dst_path, dst_fn[2:])
 	except:
 		pass
 	if src_size != dst_size and src_size:
@@ -53,28 +63,39 @@ def copyOverFileIfNeeded(src_path, src_fn, dst_path, dst_fn):
 
 
 def copyRomFiles(src_full, dst_path):
-	try:
-		os.makedirs(os.path.dirname(dst_path), exist_ok = True)
-		src_patn = src_full.rsplit('.', 1)[0] + '.*'
-		print(f'Copying {src_patn} -> {dst_path}', file = sys.stderr)
-		for file in glob.glob(src_patn):
-			shutil.copy(file, dst_path)
-	except shutil.SameFileError:
-		return True
-	except Exception as e:
-		print(f'Error: {str(e)}', file = sys.stderr)
-		return False
-	return True
+	def copy_file(fn, tgt_path):
+		try:
+			shutil.copy(fn, tgt_path)
+		except shutil.SameFileError:
+			pass
+		except Exception as e:
+			print(f'Error: {str(e)}', file = sys.stderr)
+
+	os.makedirs(os.path.dirname(dst_path), exist_ok = True)
+	src_patn = src_full.rsplit('.', 1)[0] + '.*'
+	print(f'Copying {src_patn} -> {dst_path}', file = sys.stderr)
+	for file in glob.glob(src_patn):
+		copy_file(file, dst_path)
+	if src_full.lower().endswith('.cue'):
+		for file in get_cue_filelist(src_full):
+			copy_file(file, dst_path)
 
 
 def deleteRomFiles(src_full):
-	src_patn = src_full.rsplit('.', 1)[0] + '.*'
-	for filename in glob.glob(src_patn):
+	def del_file(filename):
 		print(f'Deleting {filename} ...', file = sys.stderr)
 		try:
 			os.remove(filename)
+		except FileNotFoundError:
+			pass
 		except Exception as e:
 			print(f'Error: {str(e)}', file = sys.stderr)
+	src_patn = src_full.rsplit('.', 1)[0] + '.*'
+	for filename in glob.glob(src_patn):
+		if filename.lower().endswith('.cue'):
+			for fn in get_cue_filelist(filename):
+				del_file(fn)
+		del_file(filename)
 
 
 def gamelist_merge(output, sources, out_path, src_dirs, rule):
@@ -110,7 +131,7 @@ def gamelist_merge(output, sources, out_path, src_dirs, rule):
 				for entry in game:
 					if entry.text and entry.text.startswith('./'):
 						if entry.tag == key:
-							copyRomFiles(src_path + entry.text, out_path)
+							copyRomFiles(src_path + entry.text[2:], out_path)
 						else:
 							copyOverFileIfNeeded(src_path, entry.text, out_path, entry.text)
 				continue
@@ -122,7 +143,7 @@ def gamelist_merge(output, sources, out_path, src_dirs, rule):
 			bl_info = {d.tag: d.text for d in bl_game}
 			new_info = {d.tag: d.text for d in game}
 			for k, v in new_info.items():
-				if k not in bl_info:    # for new field just add
+				if k not in bl_info:    # for new field just add, cannot be ROM
 					e = ET.Element(k)
 					e.text = v
 					if len(bl_game):
