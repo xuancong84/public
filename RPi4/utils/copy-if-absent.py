@@ -19,12 +19,14 @@ def getFileSize(path, fn):
 def copyOverFiles(src_full, dst_path):
 	try:
 		os.makedirs(os.path.dirname(dst_path), exist_ok = True)
-		src_patn = src_full.rsplit('.', 1) + '.*'
+		src_patn = src_full.rsplit('.', 1)[0] + '.*'
 		print(f'Copying {src_patn} -> {dst_path}', file = sys.stderr)
 		for file in glob.glob(src_patn):
 			shutil.copy(file, dst_path)
 	except Exception as e:
 		print(f'Error: {str(e)}', file = sys.stderr)
+		return False
+	return True
 
 
 def get_fullnames(path, ext):
@@ -41,6 +43,7 @@ if __name__ == '__main__':
 	parser.add_argument('src_ext', help = 'source extension(s) delimited by space')
 	parser.add_argument('dst_dir', help = 'destination directory')
 	parser.add_argument('dst_ext', help = 'desination extension(s) delimited by space')
+	parser.add_argument('--move', '-m', help = 'move files over instead of copying files')
 	parser.add_argument('--norm', '-n', help = 'the Python code for normalizing ROM names from ROM filename',
 	                    default = "re.sub(' +', ' ', re.sub('\[.*\]', '', s.rsplit('.',1)[0].replace('!',''))).lower().strip()")
 	# nargs='?': optional positional argument; action='append': multiple instances of the arg; type=; default=
@@ -55,8 +58,10 @@ if __name__ == '__main__':
 
 	# main loop
 	for fn in get_fullnames(src_dir, src_ext):
-		if normalize(os.path.basename(fn)) not in dst_rom_set:
-			copyOverFiles(fn, dst_dir)
+		new_rom = normalize(os.path.basename(fn))
+		if new_rom not in dst_rom_set:
+			if copyOverFiles(fn, dst_dir):
+				dst_rom_set.add(new_rom)
 
 
 
