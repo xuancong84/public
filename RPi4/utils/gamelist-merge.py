@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import os, sys, shutil, argparse, re
+import os, sys, shutil, argparse, re, glob, shutil
 import xml.etree.ElementTree as ET
 
 
@@ -9,13 +9,12 @@ def normalize_dir(path):
 
 
 def get_game_id(game):
-	global key
+	global key, normalize
 	if game.find(key) == None:
 		return None
 	rom_name = os.path.basename(game.find(key).text)
-	game_id = os.path.splitext(rom_name)[0].strip().lower()
-	game_id = re.sub(r'!', '', game_id)
-	return re.sub(r' +', ' ', game_id.strip())
+	s = os.path.splitext(rom_name)[0]
+	return normalize(s)
 
 
 def getFileSize(path, fn):
@@ -53,7 +52,34 @@ def copyOverFileIfNeeded(src_path, src_fn, dst_path, dst_fn):
 			print(f'Error: {str(e)}', file = sys.stderr)
 
 
+def copyRomFiles(src_full, dst_path):
+	try:
+		os.makedirs(os.path.dirname(dst_path), exist_ok = True)
+		src_patn = src_full.rsplit('.', 1)[0] + '.*'
+		print(f'Copying {src_patn} -> {dst_path}', file = sys.stderr)
+		for file in glob.glob(src_patn):
+			shutil.copy(file, dst_path)
+	except shutil.SameFileError:
+		return True
+	except Exception as e:
+		print(f'Error: {str(e)}', file = sys.stderr)
+		return False
+	return True
+
+
+def deleteRomFiles(src_full):
+	src_patn = src_full.rsplit('.', 1)[0] + '.*'
+	for filename in glob.glob(src_patn):
+		print(f'Deleting {filename} ...', file = sys.stderr)
+		try:
+			os.remove(filename)
+		except Exception as e:
+			print(f'Error: {str(e)}', file = sys.stderr)
+
+
 def gamelist_merge(output, sources, out_path, src_dirs, rule):
+	global key
+
 	if not sources:
 		return ET.ElementTree()
 
@@ -63,7 +89,7 @@ def gamelist_merge(output, sources, out_path, src_dirs, rule):
 	out_root = out_tree.getroot()
 	print(f"{len(out_root)} entries")
 
-	# clear output
+	# clear output tree
 	for i in out_root.findall('game'):
 		out_root.remove(i)
 
@@ -78,12 +104,15 @@ def gamelist_merge(output, sources, out_path, src_dirs, rule):
 		for game in src_root.findall('game'):
 			game_id = get_game_id(game)
 			if not game_id: continue
-			if game_id not in game_dict:
+			if game_id not in game_dict:    # new entry, copy over all files
 				game_dict[game_id] = game
 				out_root.append(game)
 				for entry in game:
 					if entry.text and entry.text.startswith('./'):
-						copyOverFileIfNeeded(src_path, entry.text, out_path, entry.text)
+						if entry.tag == key:
+							copyRomFiles(src_path + entry.text, out_path)
+						else:
+							copyOverFileIfNeeded(src_path, entry.text, out_path, entry.text)
 				continue
 			if not rule:
 				continue
@@ -105,15 +134,24 @@ def gamelist_merge(output, sources, out_path, src_dirs, rule):
 				if v is None:   # None will not overwrite anything
 					continue
 				if v.startswith('./'):  # is a filename field
-					bl_filesize = getFileSize(out_path, v)
+					vs = v[2:]
+					bl_filesize = getFileSize(out_path, bl_game.find(k).text)
 					new_filesize = getFileSize(src_path, v)
 					if bl_filesize != new_filesize:
-						rule1 = rule.get(k, rule.get('<file>', 'bigger'))
-						if (new_filesize>bl_filesize and rule1=='bigger') or (new_filesize<bl_filesize and rule1=='smaller'):
-							if out_path not in sources:
-								deleteFileIfNeeded(out_path, bl_game.find(k).text)
-							bl_game.find(k).text = v
-							copyOverFileIfNeeded(src_path, v, out_path, v)
+						if k == key:  # is ROM file
+							rule1 = rule.get(k, 'smaller')
+							if (new_filesize>bl_filesize and rule1=='bigger') or (new_filesize<bl_filesize and rule1=='smaller'):
+								if out_path not in sources:
+									deleteRomFiles(out_path + bl_game.find(k).text[2:])
+								bl_game.find(k).text = v
+								copyRomFiles(src_path + vs, out_path)
+						else:   # non-ROM file
+							rule1 = rule.get(k, rule.get('<file>', 'bigger'))
+							if (new_filesize>bl_filesize and rule1=='bigger') or (new_filesize<bl_filesize and rule1=='smaller'):
+								if out_path not in sources:
+									deleteFileIfNeeded(out_path, bl_game.find(k).text)
+								bl_game.find(k).text = v
+								copyOverFileIfNeeded(src_path, v, out_path, v)
 				else:   # is a string field
 					bl_strlen = len(bl_info[k])
 					new_strlen = len(v)
@@ -123,6 +161,7 @@ def gamelist_merge(output, sources, out_path, src_dirs, rule):
 							bl_game.find(k).text = v
 
 	print(f"\nWriting output xml file to {output} ... ({len(out_tree.findall('game'))} entries)")
+	os.makedirs(os.path.dirname(output), exist_ok = True)
 	out_tree.write(output, encoding = "UTF-8", xml_declaration = True)
 
 
@@ -139,6 +178,8 @@ if __name__ == '__main__':
 	parser.add_argument('output', help = 'output gamelist.xml file')
 	parser.add_argument('sources', help = 'input gamelist.xml files, first file has the highest priority in the event of tie rule or no merge', nargs = '+')
 	parser.add_argument('--key', '-k', help = 'the key field for distinguishing different games', default = 'path')
+	parser.add_argument('--norm', '-n', help = 'Python code for normalizing game names',
+	                    default = 're.sub(r" +", " ", re.sub("\[.*\]", "", s.replace("!", "").replace("(USA)","(U)").replace("(US)","(U)").replace("(Europe)", "(E)"))).strip().lower()')
 	parser.add_argument('--source-dir', '-sd', help = 'the root directory(ies) containing all the ROM/preview files, if present, resource files will be moved, if multiple are specified, its number must match that in <sources>', default = [], nargs = '+')
 	parser.add_argument('--output-dir', '-od', help = 'the output directory containing all the ROM/preview files, if present, resource files will be moved, can be the same as any <source-dir>', default = '')
 	parser.add_argument('--mergerule', '-m', help = 'the merge rule, <file> refer to all filename fields, <string> refer to all non-filename fields, set to {} for no internal merge',
@@ -155,5 +196,6 @@ if __name__ == '__main__':
 		assert len(source_dir)==len(sources), 'Number of items in <output-dir> must match that in <sources> (or be 1 (the same for every <source>))'
 
 	rule = eval(mergerule)
+	normalize = lambda s: eval(norm)
 
 	gamelist_merge(os.path.expanduser(output), [os.path.expanduser(fn) for fn in sources], normalize_dir(output_dir), [normalize_dir(p) for p in source_dir], rule)
