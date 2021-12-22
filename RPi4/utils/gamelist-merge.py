@@ -19,8 +19,7 @@ def get_game_id(game):
 	global key, normalize
 	if game.find(key) == None:
 		return None
-	rom_name = os.path.basename(game.find(key).text)
-	s = os.path.splitext(rom_name)[0]
+	s = os.path.basename(game.find(key).text)
 	return normalize(s)
 
 
@@ -186,6 +185,18 @@ def gamelist_merge(output, sources, out_path, src_dirs, rule):
 	out_tree.write(output, encoding = "UTF-8", xml_declaration = True)
 
 
+class String(str):
+	for func in dir(str):
+		if not func.startswith('_'):
+			exec(f'{func}=lambda *args, **kwargs: [(String(i) if type(i)==str else ([String(j) for j in i] if type(i)==list else i)) for i in [str.{func}(*args, **kwargs)]][0]')
+
+	def __init__(self, value='', **kwargs):
+		super().__init__()
+
+	def sub(self, src, tgt):
+		return String(re.sub(src, tgt, self))
+
+
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(usage = '$0 <output> <sources> ... [options] 1>output 2>progress',
 	                                 description = 'The world\'s best program (up to today) for merging gamelist.xml (it can merge multiple game lists in one go)\n'
@@ -199,8 +210,9 @@ if __name__ == '__main__':
 	parser.add_argument('output', help = 'output gamelist.xml file')
 	parser.add_argument('sources', help = 'input gamelist.xml files, first file has the highest priority in the event of tie rule or no merge', nargs = '+')
 	parser.add_argument('--key', '-k', help = 'the key field for distinguishing different games', default = 'path')
+	parser.add_argument('--resource', '-r', help = 'transfer resource files (use the directory of gamelist.xml if <source-dir> and <output-dir> are not specified)', action = 'store_true')
 	parser.add_argument('--norm', '-n', help = 'Python code for normalizing game names',
-	                    default = 're.sub(r" +", " ", re.sub("\[.*\]", "", s.replace("!", "").replace("(USA)","(U)").replace("(US)","(U)").replace("(Europe)", "(E)"))).strip().lower()')
+	                    default = 're.sub(r" +", " ", re.sub("\[.*\]", "", s.rsplit(".",1)[0].replace("!", "").replace("(USA)","(U)").replace("(US)","(U)").replace("(Europe)", "(E)"))).strip().lower()')
 	parser.add_argument('--source-dir', '-sd', help = 'the root directory(ies) containing all the ROM/preview files, if present, resource files will be moved, if multiple are specified, its number must match that in <sources>', default = [], nargs = '+')
 	parser.add_argument('--output-dir', '-od', help = 'the output directory containing all the ROM/preview files, if present, resource files will be moved, can be the same as any <source-dir>', default = '')
 	parser.add_argument('--mergerule', '-m', help = 'the merge rule, <file> refer to all filename fields, <string> refer to all non-filename fields, set to {} for no internal merge',
@@ -209,8 +221,11 @@ if __name__ == '__main__':
 	opt = parser.parse_args()
 	globals().update(vars(opt))
 
+	if resource and not output_dir:
+		output_dir = os.path.dirname(output)
+
 	if not source_dir:
-		source_dir = ['']*len(sources)
+		source_dir = [os.path.dirname(src1) for src1 in sources] if resource else ['']*len(sources)
 	elif len(source_dir)==1:
 		source_dir = source_dir*len(sources)
 	else:

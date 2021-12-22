@@ -25,21 +25,16 @@ def getFileSize(path, fn):
 
 def copyOverFiles(src_full, dst_path):
 	global move
+	transfer = shutil.move if move else shutil.copy
 	try:
 		os.makedirs(os.path.dirname(dst_path), exist_ok = True)
 		src_patn = src_full.rsplit('.', 1)[0] + '.*'
-		print(f'Copying {src_patn} -> {dst_path}', file = sys.stderr)
+		print(f'%s {src_patn} -> {dst_path}'%('Moving' if move else 'Copying'), file = sys.stderr)
 		for file in glob.glob(src_patn):
-			if move:
-				shutil.move(file, dst_path)
-			else:
-				shutil.copy(file, dst_path)
+			transfer(file, dst_path)
 		if src_full.lower().endswith('.cue'):
 			for file in get_cue_filelist(src_full):
-				if move:
-					shutil.move(file, dst_path)
-				else:
-					shutil.copy(file, dst_path)
+				transfer(file, dst_path)
 	except Exception as e:
 		print(f'Error: {str(e)}', file = sys.stderr)
 		return False
@@ -49,7 +44,7 @@ def copyOverFiles(src_full, dst_path):
 def get_fullnames(path, ext):
 	if ' ' in ext:
 		return [fn for ext1 in ext.split() for fn in get_fullnames(path, ext1)]
-	return [fn for fn in glob.glob(path + '*.' + ext.upper()) + glob.glob(path + '*.' + ext.lower())]
+	return [fn for fn in glob.glob(path + '*.' + ext.lstrip('.').upper()) + glob.glob(path + '*.' + ext.lstrip('.').lower())]
 
 
 if __name__ == '__main__':
@@ -58,7 +53,7 @@ if __name__ == '__main__':
 	                                 formatter_class = argparse.ArgumentDefaultsHelpFormatter)
 	parser.add_argument('--move', '-m', help = 'move files over instead of copying files', action = 'store_true')
 	parser.add_argument('--norm', '-n', help = 'the Python code for normalizing ROM names from ROM filename',
-	                    default = "re.sub(' +', ' ', re.sub('\[.*\]', '', s.rsplit('.',1)[0].replace('!',''))).lower().strip()")
+	                    default = 're.sub(r" +", " ", re.sub("\[.*\]", "", s.rsplit(".",1)[0].replace("!", "").replace("(USA)","(U)").replace("(US)","(U)").replace("(Europe)", "(E)"))).strip().lower()')
 	parser.add_argument('rom_exts', help = 'ROM file extension(s) delimited by space (case-insensitive), e.g., "iso chd cue"')
 	parser.add_argument('dst_dir', help = 'destination directory')
 	parser.add_argument('src_dirs', help = 'source directories', nargs = '+')
