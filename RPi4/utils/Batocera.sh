@@ -108,6 +108,9 @@ echo '#!/bin/bash
 for i in {1..3}; do
 	sleep 10
 	/etc/init.d/S06audio restart
+	if [ "`ps aux | grep fbcp`" ]; then
+		break
+	fi
 	prof=`batocera-audio list-profiles | grep IEC958 | head -1 | awk "{print \\$1}"`
 	if [ ! "$prof" ]; then
 		continue
