@@ -15,6 +15,12 @@ def get_cue_filelist(fn):
 	return [dir+'/'+f for f in out]
 
 
+def get_m3u_filelist(fn):
+	dir = os.path.dirname(fn)
+	entries = [L.strip() for L in open(fn).readlines() if L.strip()]
+	return [dir+'/'+f for f in entries]
+
+
 def get_game_id(game):
 	global key, normalize
 	if game.find(key) == None:
@@ -23,12 +29,16 @@ def get_game_id(game):
 	return normalize(s)
 
 
-def getFileSize(path, fn):
+def getFileSize(path, fn=''):
 	if not path:
 		return 0
 	try:
 		ret = os.path.getsize(path+fn)
-		return ret+sum([os.path.getsize(f1) for f1 in get_cue_filelist(path+fn)]) if fn.lower().endswith('.cue') else ret
+		if fn.lower().endswith('.cue'):
+			ret += sum([os.path.getsize(f1) for f1 in get_cue_filelist(path+fn)])
+		elif fn.lower().endswith('.m3u'):
+			ret += sum([os.path.getsize(f1) for f1 in get_m3u_filelist(path+fn)])
+		return ret
 	except:
 		return 0
 
@@ -62,9 +72,15 @@ def copyOverFileIfNeeded(src_path, src_fn, dst_path, dst_fn):   # non-ROM
 
 
 def copyRomFiles(src_full, dst_path):
-	def copy_file(fn, tgt_path):
+	def copy_file(src_fn, tgt):
 		try:
-			shutil.copy(fn, tgt_path)
+			dst_fn = tgt + os.path.basename(src_fn) if os.path.isdir(tgt) else tgt
+			src_size, dst_size = getFileSize(src_fn), getFileSize(dst_fn)
+			if src_size != dst_size and src_size:
+				print(f'Copying {src_fn} -> {tgt}', file = sys.stderr)
+				shutil.copy(src_fn, tgt)
+			else:
+				print(f'Skipping {src_fn} == {dst_fn}', file = sys.stderr)
 		except shutil.SameFileError:
 			pass
 		except Exception as e:
@@ -77,6 +93,9 @@ def copyRomFiles(src_full, dst_path):
 		copy_file(file, dst_path)
 	if src_full.lower().endswith('.cue'):
 		for file in get_cue_filelist(src_full):
+			copy_file(file, dst_path)
+	elif src_full.lower().endswith('.m3u'):
+		for file in get_m3u_filelist(src_full):
 			copy_file(file, dst_path)
 
 
@@ -93,6 +112,9 @@ def deleteRomFiles(src_full):
 	for filename in glob.glob(src_patn):
 		if filename.lower().endswith('.cue'):
 			for fn in get_cue_filelist(filename):
+				del_file(fn)
+		elif filename.lower().endswith('.m3u'):
+			for fn in get_m3u_filelist(filename):
 				del_file(fn)
 		del_file(filename)
 

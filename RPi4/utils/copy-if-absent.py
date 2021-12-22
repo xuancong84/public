@@ -14,6 +14,12 @@ def get_cue_filelist(fn):
 	return [dir+'/'+f for f in out]
 
 
+def get_m3u_filelist(fn):
+	dir = os.path.dirname(fn)
+	entries = [L.strip() for L in open(fn).readlines() if L.strip()]
+	return [dir+'/'+f for f in entries]
+
+
 def getFileSize(path, fn):
 	if not path:
 		return 0
@@ -25,7 +31,16 @@ def getFileSize(path, fn):
 
 def copyOverFiles(src_full, dst_path):
 	global move
-	transfer = shutil.move if move else shutil.copy
+
+	def transfer(src_fn, tgt):
+		dst_fn = tgt+os.path.basename(src_fn) if os.path.isdir(tgt) else tgt
+		src_size, dst_size = getFileSize(src_fn), getFileSize(dst_fn)
+		if src_size != dst_size and src_size:
+			print(f'%s {src_fn} -> {tgt}' % ('Moving' if move else 'Copying'), file = sys.stderr)
+			(shutil.move if move else shutil.copy)(src_fn, tgt)
+		else:
+			print(f'Skipping {src_fn} == {dst_fn}', file = sys.stderr)
+
 	try:
 		os.makedirs(os.path.dirname(dst_path), exist_ok = True)
 		src_patn = src_full.rsplit('.', 1)[0] + '.*'
@@ -34,6 +49,9 @@ def copyOverFiles(src_full, dst_path):
 			transfer(file, dst_path)
 		if src_full.lower().endswith('.cue'):
 			for file in get_cue_filelist(src_full):
+				transfer(file, dst_path)
+		elif src_full.lower().endswith('.m3u'):
+			for file in get_m3u_filelist(src_full):
 				transfer(file, dst_path)
 	except Exception as e:
 		print(f'Error: {str(e)}', file = sys.stderr)
