@@ -89,7 +89,7 @@ def copyRomFiles(src_full, dst_path):
 	os.makedirs(os.path.dirname(dst_path), exist_ok = True)
 	src_patn = src_full.rsplit('.', 1)[0] + '.*'
 	print(f'Copying {src_patn} -> {dst_path}', file = sys.stderr)
-	for file in glob.glob(src_patn):
+	for file in glob.glob(src_patn.replace('[','[[]').replace(']','[]]')):
 		copy_file(file, dst_path)
 	if src_full.lower().endswith('.cue'):
 		for file in get_cue_filelist(src_full):
@@ -109,7 +109,7 @@ def deleteRomFiles(src_full):
 		except Exception as e:
 			print(f'Error: {str(e)}', file = sys.stderr)
 	src_patn = src_full.rsplit('.', 1)[0] + '.*'
-	for filename in glob.glob(src_patn):
+	for filename in glob.glob(src_patn.replace('[','[[]').replace(']','[]]')):
 		if filename.lower().endswith('.cue'):
 			for fn in get_cue_filelist(filename):
 				del_file(fn)
@@ -195,7 +195,7 @@ def gamelist_merge(output, sources, out_path, src_dirs, rule):
 								bl_game.find(k).text = v
 								copyOverFileIfNeeded(src_path, v, out_path, v)
 				else:   # is a string field
-					bl_strlen = len(bl_info[k])
+					bl_strlen = len(bl_info[k]) if bl_info[k] else 0
 					new_strlen = len(v)
 					if bl_strlen != new_strlen:
 						rule1 = rule.get(k, rule.get('<string>', 'longer'))

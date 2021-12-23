@@ -7,6 +7,10 @@ def normalize_dir(path):
 	return os.path.expanduser(path).rstrip('/')+'/'
 
 
+def glob_find(patn):
+	return glob.glob(patn.replace('[','[[]').replace(']','[]]'))
+
+
 def get_cue_filelist(fn):
 	dir = os.path.dirname(fn)
 	entries = [L for L in open(fn).readlines() if L.strip().startswith('FILE')]
@@ -20,7 +24,7 @@ def get_m3u_filelist(fn):
 	return [dir+'/'+f for f in entries]
 
 
-def getFileSize(path, fn):
+def getFileSize(path, fn=''):
 	if not path:
 		return 0
 	try:
@@ -45,7 +49,7 @@ def copyOverFiles(src_full, dst_path):
 		os.makedirs(os.path.dirname(dst_path), exist_ok = True)
 		src_patn = src_full.rsplit('.', 1)[0] + '.*'
 		print(f'%s {src_patn} -> {dst_path}'%('Moving' if move else 'Copying'), file = sys.stderr)
-		for file in glob.glob(src_patn):
+		for file in glob_find(src_patn):
 			transfer(file, dst_path)
 		if src_full.lower().endswith('.cue'):
 			for file in get_cue_filelist(src_full):
@@ -62,7 +66,7 @@ def copyOverFiles(src_full, dst_path):
 def get_fullnames(path, ext):
 	if ' ' in ext:
 		return [fn for ext1 in ext.split() for fn in get_fullnames(path, ext1)]
-	return [fn for fn in glob.glob(path + '*.' + ext.lstrip('.').upper()) + glob.glob(path + '*.' + ext.lstrip('.').lower())]
+	return [fn for fn in glob_find(path + '*.' + ext.lstrip('.').upper()) + glob_find(path + '*.' + ext.lstrip('.').lower())]
 
 
 if __name__ == '__main__':
