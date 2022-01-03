@@ -24,11 +24,14 @@ def get_m3u_filelist(fn):
 	return [dir+'/'+f for f in entries]
 
 
-def getFileSize(path, fn=''):
-	if not path:
-		return 0
+def getFileSize(fn):
 	try:
-		return os.path.getsize(path+fn)
+		ret = os.path.getsize(fn)
+		if fn.lower().endswith('.cue'):
+			ret += sum([os.path.getsize(f1) for f1 in get_cue_filelist(fn)])
+		elif fn.lower().endswith('.m3u'):
+			ret += sum([os.path.getsize(f1) for f1 in get_m3u_filelist(fn)])
+		return ret
 	except:
 		return 0
 

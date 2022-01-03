@@ -29,15 +29,13 @@ def get_game_id(game):
 	return normalize(s)
 
 
-def getFileSize(path, fn=''):
-	if not path:
-		return 0
+def getFileSize(fn):
 	try:
-		ret = os.path.getsize(path+fn)
+		ret = os.path.getsize(fn)
 		if fn.lower().endswith('.cue'):
-			ret += sum([os.path.getsize(f1) for f1 in get_cue_filelist(path+fn)])
+			ret += sum([os.path.getsize(f1) for f1 in get_cue_filelist(fn)])
 		elif fn.lower().endswith('.m3u'):
-			ret += sum([os.path.getsize(f1) for f1 in get_m3u_filelist(path+fn)])
+			ret += sum([os.path.getsize(f1) for f1 in get_m3u_filelist(fn)])
 		return ret
 	except:
 		return 0
@@ -59,7 +57,7 @@ def copyOverFileIfNeeded(src_path, src_fn, dst_path, dst_fn):   # non-ROM
 			return
 		src_full = src_path + src_fn[2:]
 		dst_full = dst_path + dst_fn[2:]
-		src_size, dst_size = getFileSize(src_path, src_fn[2:]), getFileSize(dst_path, dst_fn[2:])
+		src_size, dst_size = getFileSize(src_full), getFileSize(dst_full)
 	except:
 		pass
 	if src_size != dst_size and src_size:
@@ -119,6 +117,30 @@ def deleteRomFiles(src_full):
 		del_file(filename)
 
 
+def gamelist_verify(source, src_path):
+	print(f'Parsing {source} ...', end = ' ', flush = True, file = sys.stderr)
+	src_tree = ET.parse(source)
+	src_root = src_tree.getroot()
+	print(f"{len(src_root)} entries", file = sys.stderr)
+
+	# main loop
+	for game in src_root.findall('game'):
+		game_info = {d.tag: d.text for d in game}
+		for k, v in game_info.items():
+			if v is None: continue
+			if not v.startswith('./'): continue
+			if getFileSize(src_path, v[2:]) == 0:
+				print(f'Missing file: {src_path+v[2:]}')
+			elif v.lower().endswith('.m3u'):
+				for fn in get_m3u_filelist(src_path+v[2:]):
+					if getFileSize(fn) == 0:
+						print(f'Missing M3U: {src_path+v[2:]}')
+			elif v.lower().endswith('.cue'):
+				for fn in get_cue_filelist(src_path+v[2:]):
+					if getFileSize(fn) == 0:
+						print(f'Missing CUE: {src_path+v[2:]}')
+
+
 def gamelist_merge(output, sources, out_path, src_dirs, rule):
 	global key
 
@@ -147,6 +169,8 @@ def gamelist_merge(output, sources, out_path, src_dirs, rule):
 			game_id = get_game_id(game)
 			if not game_id: continue
 			if game_id not in game_dict:    # new entry, copy over all files
+				if getFileSize(src_path+game.find(key).text) == 0:  # missing ROM, discard
+					continue
 				game_dict[game_id] = game
 				out_root.append(game)
 				for entry in game:
@@ -171,14 +195,15 @@ def gamelist_merge(output, sources, out_path, src_dirs, rule):
 						e.tail = bl_game[-1].tail
 						bl_game[-1].tail = bl_game[0].tail
 					bl_game.append(e)
-					copyOverFileIfNeeded(src_path, v, out_path, v)
+					if v.startswith('./'):
+						copyOverFileIfNeeded(src_path, v, out_path, v)
 					continue
 				if v is None:   # None will not overwrite anything
 					continue
 				if v.startswith('./'):  # is a filename field
 					vs = v[2:]
-					bl_filesize = getFileSize(out_path, bl_game.find(k).text)
-					new_filesize = getFileSize(src_path, v)
+					bl_filesize = getFileSize(out_path+bl_game.find(k).text[2:])
+					new_filesize = getFileSize(src_path+vs)
 					if bl_filesize != new_filesize:
 						if k == key:  # is ROM file
 							rule1 = rule.get(k, 'smaller')
